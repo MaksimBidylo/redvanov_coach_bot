@@ -24,5 +24,8 @@ func main() {
 }
 
 func hello(w http.ResponseWriter, _ *http.Request) {
-	fmt.Fprintln(w, "Hello, world!")
+	_, err := fmt.Fprintln(w, "Hello, world!")
+	if err != nil {
+		return
+	}
 }
