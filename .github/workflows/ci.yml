@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: docker build --platform linux/amd64 -t coach-bot:ci .
+      - name: Check container
+        run: |
+          trap 'docker logs coach-bot-ci; docker rm --force coach-bot-ci' EXIT
+          docker run --detach --platform linux/amd64 --name coach-bot-ci --env PORT=10000 --publish 127.0.0.1:10000:10000 coach-bot:ci
+          response=$(curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 --max-time 2 http://127.0.0.1:10000/)
+          test "$response" = 'Hello, world!'
