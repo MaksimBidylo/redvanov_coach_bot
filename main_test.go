@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-func TestHello(t *testing.T) {
+func TestHealth(t *testing.T) {
 	response := httptest.NewRecorder()
-	hello(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	health(response, httptest.NewRequest(http.MethodGet, "/", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if body := response.Body.String(); body != "Hello, world!\n" {
-		t.Fatalf("body = %q, want Hello, world! followed by newline", body)
+	if body := response.Body.String(); body != "ok\n" {
+		t.Fatalf("body = %q, want ok followed by newline", body)
 	}
 }
