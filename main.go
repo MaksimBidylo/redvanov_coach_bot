@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 )
 
 func main() {
@@ -30,36 +28,10 @@ func run(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", health)
 	telegram, err := newTelegramBot(os.Getenv("TELEGRAM_OWNER_ID"), os.Getenv("TELEGRAM_BOT_TOKEN"), pool)
 	if err != nil {
 		return err
 	}
 	go telegram.Start(ctx)
-	server := &http.Server{
-		Addr:              "0.0.0.0:" + port,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-	}
-	serverError := make(chan error, 1)
-	go func() { serverError <- server.ListenAndServe() }()
-	select {
-	case err := <-serverError:
-		return err
-	case <-ctx.Done():
-		return server.Close()
-	}
-}
-
-func health(w http.ResponseWriter, _ *http.Request) {
-	_, err := fmt.Fprintln(w, "ok")
-	if err != nil {
-		return
-	}
+	return serveHTTP(ctx)
 }
