@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,7 +36,14 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	if query.From.ID != h.ownerID || message == nil || message.Chat.Type != models.ChatTypePrivate {
 		return
 	}
-	if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" {
+	var groupID int64
+	if after, ok := strings.CutPrefix(query.Data, "group:"); ok {
+		id, err := strconv.ParseInt(after, 10, 64)
+		if err != nil || id <= 0 {
+			return
+		}
+		groupID = id
+	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" {
 		return
 	}
 	if query.Data != "group_create" {
@@ -58,15 +68,36 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			{{Text: "Добавить группу", CallbackData: "group_create"}},
 			{{Text: "Назад", CallbackData: "menu"}},
 		}}
-		names, err := listGroupNames(ctx, h.pool)
+		groups, err := listGroups(ctx, h.pool)
 		switch {
 		case err != nil:
 			log.Printf("Load groups failed: %v", err)
 			text = "Не удалось загрузить группы. Попробуйте ещё раз."
-		case len(names) == 0:
+		case len(groups) == 0:
 			text = "Групп пока нет"
 		default:
-			text = "Группы:\n" + strings.Join(names, "\n")
+			text = "Группы:"
+			buttons := make([][]models.InlineKeyboardButton, 0, len(groups)+len(keyboard.InlineKeyboard))
+			for _, group := range groups {
+				buttons = append(buttons, []models.InlineKeyboardButton{{
+					Text: group.Name, CallbackData: "group:" + strconv.FormatInt(group.ID, 10),
+				}})
+			}
+			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
+		}
+	} else if groupID > 0 {
+		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "Назад", CallbackData: "groups"}},
+		}}
+		name, err := getGroupName(ctx, h.pool, groupID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			text = "Группа не найдена."
+		case err != nil:
+			log.Printf("Load group failed: %v", err)
+			text = "Не удалось загрузить группу. Попробуйте ещё раз."
+		default:
+			text = name
 		}
 	}
 	if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
