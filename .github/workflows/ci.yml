@@ -12,6 +12,21 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DATABASE_URL: postgres://coach:ci-only-password@127.0.0.1:5432/coach_bot?sslmode=disable
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: coach_bot
+          POSTGRES_USER: coach
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U coach -d coach_bot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -24,6 +39,6 @@ jobs:
       - name: Check container
         run: |
           trap 'docker logs coach-bot-ci; docker rm --force coach-bot-ci' EXIT
-          docker run --detach --platform linux/amd64 --name coach-bot-ci --env PORT=10000 --env TELEGRAM_OWNER_ID=7 --env TELEGRAM_BOT_TOKEN=ci-only-token --env NO_PROXY=api.telegram.org --add-host api.telegram.org:127.0.0.1 --publish 127.0.0.1:10000:10000 coach-bot:ci
+          docker run --detach --platform linux/amd64 --network host --name coach-bot-ci --env DATABASE_URL --env PORT=10000 --env TELEGRAM_OWNER_ID=7 --env TELEGRAM_BOT_TOKEN=ci-only-token --env NO_PROXY=api.telegram.org --add-host api.telegram.org:127.0.0.1 coach-bot:ci
           response=$(curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 --max-time 2 http://127.0.0.1:10000/)
           test "$response" = 'ok'

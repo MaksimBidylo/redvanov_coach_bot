@@ -9,6 +9,7 @@ cp .env.example .env
 ```
 
 Заполни `TELEGRAM_OWNER_ID` и `TELEGRAM_BOT_TOKEN` в `.env`.
+`DATABASE_URL` задаёт подключение бота к PostgreSQL.
 
 ## Запуск
 
