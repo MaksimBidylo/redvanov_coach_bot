@@ -37,3 +37,10 @@ func listGroupNames(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
+
+func createGroup(ctx context.Context, pool *pgxpool.Pool, name string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := pool.Exec(ctx, "INSERT INTO groups (name) VALUES ($1) ON CONFLICT ((lower(name))) DO NOTHING", name)
+	return result.RowsAffected() == 1, err
+}
