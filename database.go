@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,4 +26,14 @@ func openDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error
 		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
 	}
 	return pool, nil
+}
+
+func listGroupNames(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := pool.Query(ctx, "SELECT name FROM groups ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }

@@ -36,7 +36,7 @@ func run(ctx context.Context) error {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", health)
-	telegram, err := newTelegramBot(os.Getenv("TELEGRAM_OWNER_ID"), os.Getenv("TELEGRAM_BOT_TOKEN"))
+	telegram, err := newTelegramBot(os.Getenv("TELEGRAM_OWNER_ID"), os.Getenv("TELEGRAM_BOT_TOKEN"), pool)
 	if err != nil {
 		return err
 	}
