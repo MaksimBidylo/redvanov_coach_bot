@@ -57,3 +57,10 @@ func createGroup(ctx context.Context, pool *pgxpool.Pool, name string) (bool, er
 	result, err := pool.Exec(ctx, "INSERT INTO groups (name) VALUES ($1) ON CONFLICT ((lower(name))) DO NOTHING", name)
 	return result.RowsAffected() == 1, err
 }
+
+func createClient(ctx context.Context, pool *pgxpool.Pool, name string, birthDate *time.Time, groupID int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := pool.Exec(ctx, "INSERT INTO clients (name, birth_date, group_id) VALUES ($1, $2, $3)", name, birthDate, groupID)
+	return err
+}

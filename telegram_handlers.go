@@ -21,6 +21,9 @@ type telegramHandler struct {
 	pool                *pgxpool.Pool
 	menu                models.InlineKeyboardMarkup
 	waitingForGroupName atomic.Bool
+	clientGroupID       int64
+	clientName          string
+	clientPromptID      int
 }
 
 func (h *telegramHandler) handle(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -37,20 +40,31 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	var groupID int64
-	if after, ok := strings.CutPrefix(query.Data, "group:"); ok {
+	action, after, hasID := strings.Cut(query.Data, ":")
+	if hasID && (action == "group" || action == "client") {
 		id, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || id <= 0 {
 			return
 		}
 		groupID = id
-	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" {
+	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" {
 		return
+	}
+	if query.Data == "client_skip" && (h.clientGroupID == 0 || h.clientName == "" || message.ID != h.clientPromptID) {
+		return
+	}
+	if query.Data != "client_skip" {
+		h.clientGroupID, h.clientName, h.clientPromptID = 0, "", 0
 	}
 	if query.Data != "group_create" {
 		h.waitingForGroupName.Store(false)
 	}
 	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
 		log.Printf("Telegram answerCallbackQuery failed: %v", err)
+	}
+	if query.Data == "client_skip" {
+		h.handleClientInput(ctx, b, message.Chat.ID, "", true)
+		return
 	}
 	if query.Data == "group_create" {
 		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
@@ -98,6 +112,17 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			text = "Не удалось загрузить группу. Попробуйте ещё раз."
 		default:
 			text = name
+			if action == "client" {
+				if _, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: message.Chat.ID, Text: clientNamePrompt, ReplyMarkup: h.menu}); err != nil {
+					log.Printf("Telegram sendMessage failed: %v", err)
+				} else {
+					h.clientGroupID = groupID
+				}
+				return
+			}
+			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
+				{{Text: "Добавить клиента", CallbackData: "client:" + strconv.FormatInt(groupID, 10)}},
+			}, keyboard.InlineKeyboard...)
 		}
 	}
 	if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
@@ -117,6 +142,10 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 	text := "Добро пожаловать!"
 	if message.Text == "/start" {
 		h.waitingForGroupName.Store(false)
+		h.clientGroupID, h.clientName, h.clientPromptID = 0, "", 0
+	} else if h.clientGroupID > 0 {
+		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, false)
+		return
 	} else {
 		if !h.waitingForGroupName.Load() {
 			return
