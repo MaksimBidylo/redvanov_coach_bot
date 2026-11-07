@@ -164,8 +164,7 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 }
 
 func TestTelegramMenu(t *testing.T) {
-	pool := telegramTestDatabase(t)
-	process := telegramTestSession(t, pool)
+	const seedGroups = "INSERT INTO groups (name) VALUES ('Б вечер'), ('А утро')"
 	private := &models.Message{ID: 10, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
 	group := &models.Message{Chat: models.Chat{Type: models.ChatTypeGroup}}
 	for _, tc := range []struct {
@@ -177,14 +176,22 @@ func TestTelegramMenu(t *testing.T) {
 		sql     string
 	}{
 		{"empty", 7, private, "groups", "Групп пока нет", ""},
-		{"populated", 7, private, "groups", "Группы:\nА утро\nБ вечер", "INSERT INTO groups (name) VALUES ('Б вечер'), ('А утро')"},
+		{"populated", 7, private, "groups", "Группы:", seedGroups},
+		{"selected", 7, private, "group:2", "А утро", seedGroups},
+		{"missing", 7, private, "group:999", "Группа не найдена.", ""},
+		{"invalid id", 7, private, "group:invalid", "", ""},
+		{"zero id", 7, private, "group:0", "", ""},
+		{"overflow id", 7, private, "group:9223372036854775808", "", ""},
 		{"other user", 8, private, "groups", "", ""},
 		{"group", 7, group, "groups", "", ""},
 		{"inaccessible", 7, nil, "groups", "", ""},
 		{"unknown", 7, private, "unknown", "", ""},
 		{"database error", 7, private, "groups", "Не удалось загрузить группы. Попробуйте ещё раз.", "ALTER TABLE groups RENAME COLUMN name TO broken"},
+		{"group database error", 7, private, "group:2", "Не удалось загрузить группу. Попробуйте ещё раз.", "ALTER TABLE groups RENAME COLUMN name TO broken"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			pool := telegramTestDatabase(t)
+			process := telegramTestSession(t, pool)
 			if tc.sql != "" {
 				if _, err := pool.Exec(t.Context(), tc.sql); err != nil {
 					t.Fatal(err)
@@ -198,8 +205,14 @@ func TestTelegramMenu(t *testing.T) {
 				t.Fatalf("text = %q, want %q", got, tc.want)
 			}
 			markup := `"callback_data":"menu"`
+			if strings.HasPrefix(tc.data, "group:") {
+				markup = `"callback_data":"groups"`
+			}
 			if tc.want != "" && !strings.Contains(keyboard, markup) {
 				t.Fatalf("missing %q button in %s", markup, keyboard)
+			}
+			if tc.name == "populated" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"А утро","callback_data":"group:2"}],[{"text":"Б вечер","callback_data":"group:1"}]`) {
+				t.Fatalf("unexpected group buttons: %s", keyboard)
 			}
 		})
 	}
@@ -216,6 +229,7 @@ func TestTelegramGroupCreation(t *testing.T) {
 	}{
 		{"idle", "Лишняя", "", 7, "", ""},
 		{"begin", "", "group_create", 7, groupNamePrompt, ""},
+		{"invalid callback", "", "group:invalid", 7, "", ""},
 		{"other user", "Чужая", "", 8, "", ""},
 		{"empty", " \n ", "", 7, "Название не должно быть пустым.\n" + groupNamePrompt, ""},
 		{"created", "  Взрослая утро  ", "", 7, "Группа создана.", ""},
@@ -227,7 +241,7 @@ func TestTelegramGroupCreation(t *testing.T) {
 		{"cancel", "/start", "", 7, "Добро пожаловать!", ""},
 		{"after cancel", "Лишняя", "", 7, "", ""},
 		{"begin back", "", "group_create", 7, groupNamePrompt, ""},
-		{"back", "", "groups", 7, "Группы:\nВзрослая утро\nДетская", ""},
+		{"back", "", "groups", 7, "Группы:", ""},
 		{"after back", "Лишняя", "", 7, "", ""},
 		{"begin menu", "", "group_create", 7, groupNamePrompt, ""},
 		{"menu", "", "menu", 7, "Добро пожаловать!", ""},
@@ -267,8 +281,8 @@ func TestTelegramGroupCreation(t *testing.T) {
 			t.Fatalf("%s: missing return button", tc.name)
 		}
 	}
-	names, err := listGroupNames(t.Context(), pool)
-	if err != nil || len(names) != 3 || names[0] != "Взрослая утро" || names[1] != "Выходные" || names[2] != "Детская" {
-		t.Fatalf("saved groups = %v, error = %v", names, err)
+	groups, err := listGroups(t.Context(), pool)
+	if err != nil || len(groups) != 3 || groups[0].Name != "Взрослая утро" || groups[1].Name != "Выходные" || groups[2].Name != "Детская" {
+		t.Fatalf("saved groups = %v, error = %v", groups, err)
 	}
 }
