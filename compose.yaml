@@ -2,6 +2,7 @@ services:
   bot:
     build: .
     environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required in .env}
       TELEGRAM_OWNER_ID: ${TELEGRAM_OWNER_ID:?TELEGRAM_OWNER_ID is required in .env}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required in .env}
     ports:
