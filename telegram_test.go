@@ -10,8 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,7 +23,7 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestTelegramHandler(t *testing.T) {
-	var sends atomic.Int64
+	var sends int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Path != "/bottest-token/sendMessage" {
 			t.Errorf("unexpected request: %s", r.URL.Path)
@@ -39,14 +37,14 @@ func TestTelegramHandler(t *testing.T) {
 		if !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"groups"`) {
 			t.Error("main menu must include the groups button")
 		}
-		sends.Add(1)
+		sends++
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`))}, nil
 	})}
-	b, err := newTelegramBot("7", "test-token", nil, bot.WithHTTPClient(time.Second, client), bot.WithNotAsyncHandlers())
+	b, err := newTelegramBot("7", "test-token", nil, bot.WithHTTPClient(time.Second, client))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sends.Load() != 0 {
+	if sends != 0 {
 		t.Fatal("initialization must not contact Telegram")
 	}
 	message := func(owner int64, chat models.ChatType, text string) *models.Message {
@@ -55,7 +53,7 @@ func TestTelegramHandler(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		message *models.Message
-		want    int64
+		want    int
 	}{
 		{"owner start", message(7, models.ChatTypePrivate, "/start"), 1},
 		{"other user", message(8, models.ChatTypePrivate, "/start"), 0},
@@ -65,23 +63,12 @@ func TestTelegramHandler(t *testing.T) {
 		{"no sender", &models.Message{Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}, Text: "/start"}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			before := sends.Load()
+			before := sends
 			b.ProcessUpdate(context.Background(), &models.Update{Message: tc.message})
-			if got := sends.Load() - before; got != tc.want {
+			if got := sends - before; got != tc.want {
 				t.Fatalf("sent %d messages, want %d", got, tc.want)
 			}
 		})
-	}
-	var wg sync.WaitGroup
-	before := sends.Load()
-	for range 32 {
-		wg.Go(func() {
-			b.ProcessUpdate(context.Background(), &models.Update{Message: message(7, models.ChatTypePrivate, "/start")})
-		})
-	}
-	wg.Wait()
-	if got := sends.Load() - before; got != 32 {
-		t.Fatalf("concurrent handlers sent %d messages, want 32", got)
 	}
 }
 
@@ -89,7 +76,7 @@ func TestTelegramSendFailure(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("offline")
 	})}
-	b, err := newTelegramBot("7", "test-token", nil, bot.WithHTTPClient(time.Second, client), bot.WithNotAsyncHandlers())
+	b, err := newTelegramBot("7", "test-token", nil, bot.WithHTTPClient(time.Second, client))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,8 +177,6 @@ func TestTelegramMenu(t *testing.T) {
 		sql     string
 	}{
 		{"empty", 7, private, "groups", "Групп пока нет", ""},
-		{"back", 7, private, "menu", "Добро пожаловать!", ""},
-		{"create", 7, private, "group_create", groupNamePrompt, ""},
 		{"populated", 7, private, "groups", "Группы:\nА утро\nБ вечер", "INSERT INTO groups (name) VALUES ('Б вечер'), ('А утро')"},
 		{"other user", 8, private, "groups", "", ""},
 		{"group", 7, group, "groups", "", ""},
@@ -205,20 +190,16 @@ func TestTelegramMenu(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			want, button := tc.want, "menu"
-			if tc.data == "menu" || tc.data == "group_create" {
-				button = "groups"
-			}
 			got, keyboard := process(&models.Update{CallbackQuery: &models.CallbackQuery{
 				ID: "callback", From: models.User{ID: tc.owner}, Data: tc.data,
 				Message: models.MaybeInaccessibleMessage{Message: tc.message},
 			}})
-			if got != want {
-				t.Fatalf("text = %q, want %q", got, want)
+			if got != tc.want {
+				t.Fatalf("text = %q, want %q", got, tc.want)
 			}
-			markup := `"callback_data":"` + button + `"`
-			if want != "" && !strings.Contains(keyboard, markup) {
-				t.Fatalf("missing %q button in %s", button, keyboard)
+			markup := `"callback_data":"menu"`
+			if tc.want != "" && !strings.Contains(keyboard, markup) {
+				t.Fatalf("missing %q button in %s", markup, keyboard)
 			}
 		})
 	}

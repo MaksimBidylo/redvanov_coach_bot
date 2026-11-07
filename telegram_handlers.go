@@ -20,6 +20,62 @@ type telegramHandler struct {
 	waitingForGroupName atomic.Bool
 }
 
+func (h *telegramHandler) handle(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if query := update.CallbackQuery; query != nil {
+		h.handleCallback(ctx, b, query)
+		return
+	}
+	h.handleMessage(ctx, b, update.Message)
+}
+
+func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query *models.CallbackQuery) {
+	message := query.Message.Message
+	if query.From.ID != h.ownerID || message == nil || message.Chat.Type != models.ChatTypePrivate {
+		return
+	}
+	if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" {
+		return
+	}
+	if query.Data != "group_create" {
+		h.waitingForGroupName.Store(false)
+	}
+	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
+		log.Printf("Telegram answerCallbackQuery failed: %v", err)
+	}
+	if query.Data == "group_create" {
+		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID: message.Chat.ID, Text: groupNamePrompt, ReplyMarkup: h.menu,
+		}); err != nil {
+			log.Printf("Telegram sendMessage failed: %v", err)
+		} else {
+			h.waitingForGroupName.Store(true)
+		}
+		return
+	}
+	text, keyboard := "Добро пожаловать!", h.menu
+	if query.Data == "groups" {
+		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "Добавить группу", CallbackData: "group_create"}},
+			{{Text: "Назад", CallbackData: "menu"}},
+		}}
+		names, err := listGroupNames(ctx, h.pool)
+		switch {
+		case err != nil:
+			log.Printf("Load groups failed: %v", err)
+			text = "Не удалось загрузить группы. Попробуйте ещё раз."
+		case len(names) == 0:
+			text = "Групп пока нет"
+		default:
+			text = "Группы:\n" + strings.Join(names, "\n")
+		}
+	}
+	if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+		ChatID: message.Chat.ID, MessageID: message.ID, Text: text, ReplyMarkup: keyboard,
+	}); err != nil {
+		log.Printf("Telegram editMessageText failed: %v", err)
+	}
+}
+
 func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message *models.Message) {
 	if message == nil || message.From == nil {
 		return
