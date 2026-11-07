@@ -1,0 +1,8 @@
+-- +goose Up
+CREATE TABLE groups (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+-- +goose Down
+DROP TABLE groups;

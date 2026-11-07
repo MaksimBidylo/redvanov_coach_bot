@@ -25,6 +25,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer pool.Close()
+	if err := migrateDatabase(ctx, pool); err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	port := os.Getenv("PORT")
