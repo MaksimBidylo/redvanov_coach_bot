@@ -134,9 +134,10 @@ func telegramTestDatabase(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) (string, string) {
+func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) (string, string, int) {
 	t.Helper()
 	var got, keyboard string
+	var messageID int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		result := `true`
 		switch r.URL.Path {
@@ -146,7 +147,8 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 				t.Error(err)
 			}
 			got, keyboard = r.FormValue("text"), r.FormValue("reply_markup")
-			result = `{}`
+			messageID++
+			result = `{"message_id":` + strconv.Itoa(messageID) + `}`
 		default:
 			t.Errorf("unexpected request: %s", r.URL.Path)
 		}
@@ -156,10 +158,10 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return func(update *models.Update) (string, string) {
+	return func(update *models.Update) (string, string, int) {
 		got, keyboard = "", ""
 		b.ProcessUpdate(t.Context(), update)
-		return got, keyboard
+		return got, keyboard, messageID
 	}
 }
 
@@ -197,7 +199,7 @@ func TestTelegramMenu(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			got, keyboard := process(&models.Update{CallbackQuery: &models.CallbackQuery{
+			got, keyboard, _ := process(&models.Update{CallbackQuery: &models.CallbackQuery{
 				ID: "callback", From: models.User{ID: tc.owner}, Data: tc.data,
 				Message: models.MaybeInaccessibleMessage{Message: tc.message},
 			}})
@@ -266,7 +268,7 @@ func TestTelegramGroupCreation(t *testing.T) {
 				Message: models.MaybeInaccessibleMessage{Message: message},
 			}}
 		}
-		got, keyboard := process(update)
+		got, keyboard, _ := process(update)
 		if got != tc.want {
 			t.Fatalf("%s: text = %q, want %q", tc.name, got, tc.want)
 		}
