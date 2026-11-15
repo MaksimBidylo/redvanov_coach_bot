@@ -100,3 +100,13 @@ func searchClients(ctx context.Context, pool *pgxpool.Pool, name string) ([]clie
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[client])
 }
+
+func setClientGroup(ctx context.Context, pool *pgxpool.Pool, clientID, groupID int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := pool.Exec(ctx, "UPDATE clients SET group_id = NULLIF($2::bigint, 0) WHERE id = $1", clientID, groupID)
+	if err == nil && result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return err
+}
