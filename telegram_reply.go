@@ -16,7 +16,7 @@ func (h *telegramHandler) reply(ctx context.Context, b *bot.Bot, chatID int64, t
 	for i, row := range keyboard.InlineKeyboard {
 		keyboard.InlineKeyboard[i] = append([]models.InlineKeyboardButton(nil), row...)
 		for j, button := range row {
-			if button.CallbackData == "client_skip" || strings.HasPrefix(button.CallbackData, "search_") {
+			if button.CallbackData == "client_skip" || strings.HasPrefix(button.CallbackData, "search_") || strings.HasPrefix(button.CallbackData, "move:") {
 				keyboard.InlineKeyboard[i][j].CallbackData += "|" + strconv.FormatInt(h.revision+1, 10)
 			}
 		}

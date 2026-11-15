@@ -66,6 +66,9 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 	if c.GroupName != nil {
 		groupName = *c.GroupName
 	}
+	keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
+		{{Text: "Сменить группу", CallbackData: "move:" + strconv.FormatInt(c.ID, 10)}},
+	}, keyboard.InlineKeyboard...)
 	return c.Name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
 }
 
