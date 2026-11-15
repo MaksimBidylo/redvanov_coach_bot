@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-telegram/bot/models"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (h *telegramHandler) closeGroupMenu(ctx context.Context, id, target int64, selected, confirm, archive bool) (string, models.InlineKeyboardMarkup) {
@@ -35,6 +36,10 @@ func (h *telegramHandler) closeGroupMenu(ctx context.Context, id, target int64, 
 	if confirm {
 		if err := closeGroup(ctx, h.pool, id, target, archive); err != nil {
 			log.Printf("Close group failed: %v", err)
+			var constraint *pgconn.PgError
+			if !archive && errors.As(err, &constraint) && constraint.Code == "23503" && constraint.ConstraintName == "group_payments_group_id_fkey" {
+				return "У группы есть оплаты. Удалить её нельзя — отправьте группу в архив.", keyboard
+			}
 			return "Не удалось " + verb + " группу. Попробуйте ещё раз.", keyboard
 		}
 		keyboard.InlineKeyboard[0][0].CallbackData = "groups"
