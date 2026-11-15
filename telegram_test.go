@@ -34,8 +34,8 @@ func TestTelegramHandler(t *testing.T) {
 		if r.FormValue("chat_id") != "7" || r.FormValue("text") != "Добро пожаловать!" {
 			t.Errorf("unexpected message: %v", r.Form)
 		}
-		if !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"groups"`) {
-			t.Error("main menu must include the groups button")
+		if !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"groups"`) || !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"ungrouped"`) {
+			t.Error("main menu must include groups and ungrouped clients buttons")
 		}
 		sends++
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`))}, nil
@@ -185,6 +185,9 @@ func TestTelegramMenu(t *testing.T) {
 		{"selected", 7, private, "group:2", "А утро\n\nКлиентов пока нет.", seedGroups},
 		{"clients", 7, private, "group:2", "А утро\n\nКлиенты:", seedClients},
 		{"clients database error", 7, private, "group:2", "А утро\n\nНе удалось загрузить клиентов. Попробуйте ещё раз.", seedGroups + "; ALTER TABLE clients RENAME TO broken"},
+		{"ungrouped empty", 7, private, "ungrouped", "Клиенты без группы\n\nКлиентов пока нет.", ""},
+		{"ungrouped clients", 7, private, "ungrouped", "Клиенты без группы\n\nКлиенты:", seedClients},
+		{"ungrouped database error", 7, private, "ungrouped", "Клиенты без группы\n\nНе удалось загрузить клиентов. Попробуйте ещё раз.", "ALTER TABLE clients RENAME TO broken"},
 		{"missing", 7, private, "group:999", "Группа не найдена.", ""},
 		{"invalid id", 7, private, "group:invalid", "", ""},
 		{"zero id", 7, private, "group:0", "", ""},
@@ -223,6 +226,9 @@ func TestTelegramMenu(t *testing.T) {
 			}
 			if tc.name == "clients" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"Анна (15.03.2010)","callback_data":"client_view:2"}],[{"text":"Иван","callback_data":"client_view:1"}],[{"text":"Иван (20.04.2000)","callback_data":"client_view:3"}]`) {
 				t.Fatalf("unexpected client buttons: %s", keyboard)
+			}
+			if tc.name == "ungrouped clients" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"Персональный","callback_data":"client_view:5"}],[{"text":"Добавить клиента","callback_data":"client:0"}]`) {
+				t.Fatalf("unexpected ungrouped client buttons: %s", keyboard)
 			}
 			if tc.name == "populated" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"А утро","callback_data":"group:2"}],[{"text":"Б вечер","callback_data":"group:1"}]`) {
 				t.Fatalf("unexpected group buttons: %s", keyboard)

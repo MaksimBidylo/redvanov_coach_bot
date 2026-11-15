@@ -16,7 +16,13 @@ import (
 const clientNamePrompt = "Введите имя клиента. Для отмены — /start."
 const clientBirthDatePrompt = "Введите дату рождения (ДД.ММ.ГГГГ) или нажмите «Пропустить». Для отмены — /start."
 
-func (h *telegramHandler) groupClientsMenu(ctx context.Context, groupID int64) (string, [][]models.InlineKeyboardButton) {
+type clientDraft struct {
+	groupID  *int64
+	name     string
+	promptID int
+}
+
+func (h *telegramHandler) groupClientsMenu(ctx context.Context, groupID *int64) (string, [][]models.InlineKeyboardButton) {
 	clients, err := listGroupClients(ctx, h.pool, groupID)
 	if err != nil {
 		log.Printf("Load group clients failed: %v", err)
@@ -50,6 +56,8 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 	}
 	if c.GroupID != nil {
 		keyboard.InlineKeyboard[0][0].CallbackData = "group:" + strconv.FormatInt(*c.GroupID, 10)
+	} else {
+		keyboard.InlineKeyboard[0][0].CallbackData = "ungrouped"
 	}
 	birthDate, groupName := "не указана", "без группы"
 	if c.BirthDate != nil {
@@ -62,10 +70,11 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 }
 
 func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value string, skip bool) {
+	draft := h.clientDraft
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "Пропустить", CallbackData: "client_skip"}},
 	}}
-	if h.clientName == "" {
+	if draft.name == "" {
 		name := strings.TrimSpace(value)
 		text := clientBirthDatePrompt
 		if name == "" {
@@ -74,7 +83,7 @@ func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, cha
 		if sent, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text, ReplyMarkup: keyboard}); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
-			h.clientName, h.clientPromptID = name, sent.ID
+			draft.name, draft.promptID = name, sent.ID
 		}
 		return
 	}
@@ -89,17 +98,17 @@ func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, cha
 		}
 	}
 	if skip || birthDate != nil {
-		if err := createClient(ctx, h.pool, h.clientName, birthDate, h.clientGroupID); err != nil {
+		if err := createClient(ctx, h.pool, draft.name, birthDate, draft.groupID); err != nil {
 			log.Printf("Create client failed: %v", err)
 			text = "Не удалось сохранить клиента.\n" + clientBirthDatePrompt
 		} else {
-			h.clientGroupID, h.clientName, h.clientPromptID = 0, "", 0
+			h.clientDraft = nil
 			text, keyboard = "Клиент создан.", h.menu
 		}
 	}
 	if sent, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text, ReplyMarkup: keyboard}); err != nil {
 		log.Printf("Telegram sendMessage failed: %v", err)
-	} else if h.clientGroupID > 0 {
-		h.clientPromptID = sent.ID
+	} else if h.clientDraft != nil {
+		draft.promptID = sent.ID
 	}
 }

@@ -21,9 +21,7 @@ type telegramHandler struct {
 	pool                *pgxpool.Pool
 	menu                models.InlineKeyboardMarkup
 	waitingForGroupName atomic.Bool
-	clientGroupID       int64
-	clientName          string
-	clientPromptID      int
+	clientDraft         *clientDraft
 }
 
 func (h *telegramHandler) handle(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -43,18 +41,18 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	action, after, hasID := strings.Cut(query.Data, ":")
 	if hasID && (action == "group" || action == "client" || action == "client_view") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
-		if err != nil || parsedID <= 0 {
+		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" {
+	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" {
 		return
 	}
-	if query.Data == "client_skip" && (h.clientGroupID == 0 || h.clientName == "" || message.ID != h.clientPromptID) {
+	if query.Data == "client_skip" && (h.clientDraft == nil || h.clientDraft.name == "" || message.ID != h.clientDraft.promptID) {
 		return
 	}
 	if query.Data != "client_skip" {
-		h.clientGroupID, h.clientName, h.clientPromptID = 0, "", 0
+		h.clientDraft = nil
 	}
 	if query.Data != "group_create" {
 		h.waitingForGroupName.Store(false)
@@ -79,6 +77,13 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	text, keyboard := "Добро пожаловать!", h.menu
 	if action == "client_view" {
 		text, keyboard = h.clientCard(ctx, id)
+	} else if query.Data == "ungrouped" {
+		body, buttons := h.groupClientsMenu(ctx, nil)
+		text = "Клиенты без группы\n\n" + body
+		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: append(buttons,
+			[]models.InlineKeyboardButton{{Text: "Добавить клиента", CallbackData: "client:0"}},
+			[]models.InlineKeyboardButton{{Text: "Назад", CallbackData: "menu"}},
+		)}
 	} else if query.Data == "groups" {
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 			{{Text: "Добавить группу", CallbackData: "group_create"}},
@@ -101,11 +106,15 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
-	} else if id > 0 {
+	} else if id > 0 || action == "client" {
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 			{{Text: "Назад", CallbackData: "groups"}},
 		}}
-		name, err := getGroupName(ctx, h.pool, id)
+		var name string
+		var err error
+		if id > 0 {
+			name, err = getGroupName(ctx, h.pool, id)
+		}
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			text = "Группа не найдена."
@@ -118,14 +127,17 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 				if _, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: message.Chat.ID, Text: clientNamePrompt, ReplyMarkup: h.menu}); err != nil {
 					log.Printf("Telegram sendMessage failed: %v", err)
 				} else {
-					h.clientGroupID = id
+					h.clientDraft = &clientDraft{}
+					if id > 0 {
+						h.clientDraft.groupID = &id
+					}
 				}
 				return
 			}
 			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
 				{{Text: "Добавить клиента", CallbackData: "client:" + strconv.FormatInt(id, 10)}},
 			}, keyboard.InlineKeyboard...)
-			body, buttons := h.groupClientsMenu(ctx, id)
+			body, buttons := h.groupClientsMenu(ctx, &id)
 			text += "\n\n" + body
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
@@ -147,8 +159,8 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 	text := "Добро пожаловать!"
 	if message.Text == "/start" {
 		h.waitingForGroupName.Store(false)
-		h.clientGroupID, h.clientName, h.clientPromptID = 0, "", 0
-	} else if h.clientGroupID > 0 {
+		h.clientDraft = nil
+	} else if h.clientDraft != nil {
 		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, false)
 		return
 	} else {

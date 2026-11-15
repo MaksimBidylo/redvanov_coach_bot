@@ -58,7 +58,7 @@ func createGroup(ctx context.Context, pool *pgxpool.Pool, name string) (bool, er
 	return result.RowsAffected() == 1, err
 }
 
-func createClient(ctx context.Context, pool *pgxpool.Pool, name string, birthDate *time.Time, groupID int64) error {
+func createClient(ctx context.Context, pool *pgxpool.Pool, name string, birthDate *time.Time, groupID *int64) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	_, err := pool.Exec(ctx, "INSERT INTO clients (name, birth_date, group_id) VALUES ($1, $2, $3)", name, birthDate, groupID)
@@ -73,10 +73,10 @@ type client struct {
 	GroupName *string
 }
 
-func listGroupClients(ctx context.Context, pool *pgxpool.Pool, groupID int64) ([]client, error) {
+func listGroupClients(ctx context.Context, pool *pgxpool.Pool, groupID *int64) ([]client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.group_id = $1 ORDER BY c.name, c.id", groupID)
+	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.group_id IS NOT DISTINCT FROM $1::bigint ORDER BY c.name, c.id", groupID)
 	if err != nil {
 		return nil, err
 	}
