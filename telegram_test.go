@@ -34,8 +34,8 @@ func TestTelegramHandler(t *testing.T) {
 		if r.FormValue("chat_id") != "7" || r.FormValue("text") != "Добро пожаловать!" {
 			t.Errorf("unexpected message: %v", r.Form)
 		}
-		if !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"groups"`) || !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"ungrouped"`) {
-			t.Error("main menu must include groups and ungrouped clients buttons")
+		if !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"groups"`) || !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"ungrouped"`) || !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"search"`) {
+			t.Error("main menu must include groups, ungrouped clients and search buttons")
 		}
 		sends++
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`))}, nil
