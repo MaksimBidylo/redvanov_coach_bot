@@ -23,6 +23,7 @@ func TestTelegramInputCleanup(t *testing.T) {
 		{"empty group", "group", " ", "", "editMessageText,deleteMessage"},
 		{"empty search", "search", " ", "", "editMessageText,deleteMessage"},
 		{"completed search", "search ready", "Иван", "", "deleteMessage"},
+		{"payment preview", "payment preview", "Лишний текст", "", "deleteMessage"},
 		{"reply error", "", "/start", "editMessageText", "editMessageText"},
 		{"search reply error", "search", " ", "editMessageText", "editMessageText"},
 		{"delete error", "", "/start", "deleteMessage", "editMessageText,deleteMessage"},
@@ -41,6 +42,8 @@ func TestTelegramInputCleanup(t *testing.T) {
 				h.search = &clientSearch{}
 			case "search ready":
 				h.search = &clientSearch{query: "Иван", messageID: 100}
+			case "payment preview":
+				h.paymentDraft = &paymentDraft{step: 4}
 			}
 			var calls []string
 			client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

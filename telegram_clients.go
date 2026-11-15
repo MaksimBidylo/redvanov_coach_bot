@@ -13,13 +13,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const clientNamePrompt = "Введите имя клиента. Для отмены — /start."
-const clientBirthDatePrompt = "Введите дату рождения (ДД.ММ.ГГГГ) или нажмите «Пропустить». Для отмены — /start."
+const clientNamePrompt = "Введите имя клиента."
+const clientBirthDatePrompt = "Введите дату рождения (ДД.ММ.ГГГГ) или нажмите «Пропустить»."
 
 type clientDraft struct {
 	groupID  *int64
 	name     string
 	promptID int
+}
+
+func (d clientDraft) backCallback() string {
+	if d.groupID == nil {
+		return "ungrouped"
+	}
+	return "group:" + strconv.FormatInt(*d.groupID, 10)
 }
 
 func (h *telegramHandler) groupClientsMenu(ctx context.Context, groupID *int64) (string, [][]models.InlineKeyboardButton) {
@@ -77,6 +84,9 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 		{{Text: "🔄 Сменить группу", CallbackData: "move:" + strconv.FormatInt(c.ID, 10)}},
 		{{Text: archiveText, CallbackData: archiveAction + strconv.FormatInt(c.ID, 10)}},
 	}, keyboard.InlineKeyboard...)
+	if c.GroupID != nil {
+		keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: "💰 Записать оплату", CallbackData: "payment:" + strconv.FormatInt(c.ID, 10)}}}, keyboard.InlineKeyboard...)
+	}
 	return name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
 }
 
@@ -90,16 +100,25 @@ func (h *telegramHandler) changeClientArchive(ctx context.Context, id int64, arc
 	return text, keyboard
 }
 
-func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value string, skip bool) {
+func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value, action string) {
 	draft := h.clientDraft
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "⏭️ Пропустить", CallbackData: "client_skip"}},
+		{{Text: "⬅️ Назад", CallbackData: "client_back"}},
 	}}
-	if draft.name == "" {
+	if draft.name == "" || action == "client_back" {
 		name := strings.TrimSpace(value)
+		if action == "client_back" {
+			name = ""
+		}
 		text := clientBirthDatePrompt
 		if name == "" {
-			text, keyboard = "Имя не должно быть пустым.\n"+clientNamePrompt, h.menu
+			text = clientNamePrompt
+			if action != "client_back" {
+				text = "Имя не должно быть пустым.\n" + text
+			}
+			keyboard.InlineKeyboard = keyboard.InlineKeyboard[1:]
+			keyboard.InlineKeyboard[0][0].CallbackData = draft.backCallback() + "|" + strconv.FormatInt(h.revision+1, 10)
 		}
 		if messageID, err := h.reply(ctx, b, chatID, text, keyboard); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
@@ -110,6 +129,7 @@ func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, cha
 	}
 	var birthDate *time.Time
 	text := clientBirthDatePrompt
+	skip := action == "client_skip"
 	if !skip {
 		date, err := time.Parse("02.01.2006", strings.TrimSpace(value))
 		if err != nil || date.Year() < 1 {

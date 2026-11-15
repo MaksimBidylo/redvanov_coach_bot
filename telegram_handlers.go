@@ -22,6 +22,7 @@ type telegramHandler struct {
 	menu                models.InlineKeyboardMarkup
 	waitingForGroupName atomic.Bool
 	clientDraft         *clientDraft
+	paymentDraft        *paymentDraft
 	renameGroupID       int64
 	editClientID        int64
 	editBirthDate       bool
@@ -44,7 +45,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	data, revision, versioned := strings.Cut(query.Data, "|")
-	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del") || strings.HasPrefix(data, "archive:") || strings.HasPrefix(data, "restore:") || strings.HasPrefix(data, "gar") || strings.HasPrefix(data, "group_restore:")) && revision != strconv.FormatInt(h.revision, 10) {
+	if (versioned || data == "client_skip" || data == "client_back" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del") || strings.HasPrefix(data, "archive:") || strings.HasPrefix(data, "restore:") || strings.HasPrefix(data, "gar") || strings.HasPrefix(data, "group_restore:") || strings.HasPrefix(data, "payment")) && revision != strconv.FormatInt(h.revision, 10) {
 		return
 	}
 	query.Data = data
@@ -62,13 +63,13 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" {
+	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" {
 		return
 	}
 	if (action == "delc" || action == "garc") && !hasTarget {
@@ -80,16 +81,17 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	if (action == "search_view" || query.Data == "search_results") && (h.search == nil || h.search.messageID == 0) {
 		return
 	}
-	if query.Data == "client_skip" && (h.clientDraft == nil || h.clientDraft.name == "" || message.ID != h.clientDraft.promptID) {
+	if (query.Data == "client_skip" || query.Data == "client_back") && (h.clientDraft == nil || h.clientDraft.name == "" || message.ID != h.clientDraft.promptID) {
 		return
 	}
 	h.messageID = message.ID
 	h.renameGroupID = 0
 	h.editClientID = 0
-	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && action != "archive" && action != "restore" && query.Data != "search_results" {
+	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && !strings.HasPrefix(action, "payment") && action != "archive" && action != "restore" && query.Data != "search_results" && (h.paymentDraft == nil || !h.paymentDraft.pending) {
 		h.search = nil
 	}
-	if query.Data != "client_skip" {
+	previousClientDraft := h.clientDraft
+	if query.Data != "client_skip" && query.Data != "client_back" {
 		h.clientDraft = nil
 	}
 	if query.Data != "group_create" {
@@ -98,6 +100,11 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
 		log.Printf("Telegram answerCallbackQuery failed: %v", err)
 	}
+	if strings.HasPrefix(action, "payment") || (h.paymentDraft != nil && h.paymentDraft.pending) {
+		h.handlePayment(ctx, b, message.Chat.ID, id, action, "")
+		return
+	}
+	h.paymentDraft = nil
 	if query.Data == "search" {
 		h.handleClientSearch(ctx, b, message.Chat.ID, "")
 		return
@@ -106,8 +113,8 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		h.handleClientSearch(ctx, b, message.Chat.ID, h.search.query)
 		return
 	}
-	if query.Data == "client_skip" {
-		h.handleClientInput(ctx, b, message.Chat.ID, "", true)
+	if query.Data == "client_skip" || query.Data == "client_back" {
+		h.handleClientInput(ctx, b, message.Chat.ID, "", query.Data)
 		return
 	}
 	if query.Data == "group_create" {
@@ -209,13 +216,15 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 				return
 			}
 			if action == "client" {
-				if _, err := h.reply(ctx, b, message.Chat.ID, clientNamePrompt, h.menu); err != nil {
+				draft := &clientDraft{}
+				if id > 0 {
+					draft.groupID = &id
+				}
+				keyboard.InlineKeyboard[0][0].CallbackData = draft.backCallback() + "|" + strconv.FormatInt(h.revision+1, 10)
+				if messageID, err := h.reply(ctx, b, message.Chat.ID, clientNamePrompt, keyboard); err != nil {
 					log.Printf("Telegram sendMessage failed: %v", err)
 				} else {
-					h.clientDraft = &clientDraft{}
-					if id > 0 {
-						h.clientDraft.groupID = &id
-					}
+					draft.promptID, h.clientDraft = messageID, draft
 				}
 				return
 			}
@@ -226,6 +235,9 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		keyboard.InlineKeyboard[len(keyboard.InlineKeyboard)-1][0].CallbackData = "search_results"
 	}
 	if _, err := h.reply(ctx, b, message.Chat.ID, text, keyboard); err != nil {
+		if previousClientDraft != nil && previousClientDraft.name == "" && query.Data == previousClientDraft.backCallback() {
+			h.clientDraft = previousClientDraft
+		}
 		log.Printf("Telegram editMessageText failed: %v", err)
 	}
 }
@@ -247,6 +259,10 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 			log.Printf("Telegram deleteMessage failed: %v", err)
 		}
 	}()
+	if message.Text == "/start" && h.paymentDraft != nil && h.paymentDraft.pending {
+		h.handlePayment(ctx, b, message.Chat.ID, 0, "input", message.Text)
+		return
+	}
 	if message.Text == "/start" {
 		h.waitingForGroupName.Store(false)
 		h.clientDraft = nil
@@ -255,10 +271,16 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.editClientID = 0
 		if _, err := h.reply(ctx, b, message.Chat.ID, "Добро пожаловать!", h.menu); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
+		} else {
+			h.paymentDraft = nil
 		}
 		return
 	}
-	if h.renameGroupID != 0 {
+	if h.paymentDraft != nil {
+		replyExpected = h.paymentDraft.step != 4 || h.paymentDraft.saved
+		h.handlePayment(ctx, b, message.Chat.ID, 0, "input", message.Text)
+		return
+	} else if h.renameGroupID != 0 {
 		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)
 		return
 	} else if h.editClientID != 0 {
@@ -268,7 +290,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.handleClientSearch(ctx, b, message.Chat.ID, message.Text)
 		return
 	} else if h.clientDraft != nil {
-		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, false)
+		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, "input")
 		return
 	}
 
