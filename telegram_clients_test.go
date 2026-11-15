@@ -77,3 +77,41 @@ func TestTelegramClientCreation(t *testing.T) {
 		t.Fatalf("clients: total=%d, dated=%d, undated=%d, error=%v", total, dated, undated, err)
 	}
 }
+
+func TestTelegramClientCard(t *testing.T) {
+	const seed = `INSERT INTO groups (name) VALUES ('Утро'), ('Вечер');
+		INSERT INTO clients (name, birth_date, group_id) VALUES
+		('Иванов Иван', '2010-03-15', 2), ('Иванов Иван', NULL, 2), ('Персональный', NULL, NULL)`
+	for _, tc := range []struct {
+		name, data, want, back, sql string
+	}{
+		{"dated", "client_view:1", "Иванов Иван\nДата рождения: 15.03.2010\nГруппа: Вечер", "group:2", ""},
+		{"undated", "client_view:2", "Иванов Иван\nДата рождения: не указана\nГруппа: Вечер", "group:2", ""},
+		{"without group", "client_view:3", "Персональный\nДата рождения: не указана\nГруппа: без группы", "groups", ""},
+		{"missing", "client_view:999", "Клиент не найден.", "groups", ""},
+		{"database error", "client_view:1", "Не удалось загрузить клиента. Попробуйте ещё раз.", "groups", "ALTER TABLE clients RENAME TO broken"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := telegramTestDatabase(t)
+			if _, err := pool.Exec(t.Context(), seed); err != nil {
+				t.Fatal(err)
+			}
+			if tc.sql != "" {
+				if _, err := pool.Exec(t.Context(), tc.sql); err != nil {
+					t.Fatal(err)
+				}
+			}
+			process := telegramTestSession(t, pool)
+			got, keyboard, _ := process(&models.Update{CallbackQuery: &models.CallbackQuery{
+				ID: "callback", From: models.User{ID: 7}, Data: tc.data,
+				Message: models.MaybeInaccessibleMessage{Message: &models.Message{ID: 10, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}},
+			}})
+			if got != tc.want {
+				t.Fatalf("text = %q, want %q", got, tc.want)
+			}
+			if !strings.Contains(keyboard, `"callback_data":"`+tc.back+`"`) {
+				t.Fatalf("missing back to %q in %s", tc.back, keyboard)
+			}
+		})
+	}
+}

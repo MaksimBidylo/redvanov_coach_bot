@@ -183,7 +183,7 @@ func TestTelegramMenu(t *testing.T) {
 		{"empty", 7, private, "groups", "Групп пока нет", ""},
 		{"populated", 7, private, "groups", "Группы:", seedGroups},
 		{"selected", 7, private, "group:2", "А утро\n\nКлиентов пока нет.", seedGroups},
-		{"clients", 7, private, "group:2", "А утро\n\nКлиенты:\nАнна (15.03.2010)\nИван\nИван (20.04.2000)", seedClients},
+		{"clients", 7, private, "group:2", "А утро\n\nКлиенты:", seedClients},
 		{"clients database error", 7, private, "group:2", "А утро\n\nНе удалось загрузить клиентов. Попробуйте ещё раз.", seedGroups + "; ALTER TABLE clients RENAME TO broken"},
 		{"missing", 7, private, "group:999", "Группа не найдена.", ""},
 		{"invalid id", 7, private, "group:invalid", "", ""},
@@ -220,6 +220,9 @@ func TestTelegramMenu(t *testing.T) {
 			}
 			if tc.name == "clients database error" && !strings.Contains(keyboard, `"callback_data":"client:2"`) {
 				t.Fatalf("missing add client button after list error: %s", keyboard)
+			}
+			if tc.name == "clients" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"Анна (15.03.2010)","callback_data":"client_view:2"}],[{"text":"Иван","callback_data":"client_view:1"}],[{"text":"Иван (20.04.2000)","callback_data":"client_view:3"}]`) {
+				t.Fatalf("unexpected client buttons: %s", keyboard)
 			}
 			if tc.name == "populated" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"А утро","callback_data":"group:2"}],[{"text":"Б вечер","callback_data":"group:1"}]`) {
 				t.Fatalf("unexpected group buttons: %s", keyboard)
