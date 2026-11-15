@@ -120,3 +120,17 @@ func renameGroup(ctx context.Context, pool *pgxpool.Pool, id int64, name string)
 	}
 	return err
 }
+
+func updateClientField(ctx context.Context, pool *pgxpool.Pool, id int64, birthDate bool, value any) error {
+	query := "UPDATE clients SET name = $2 WHERE id = $1"
+	if birthDate {
+		query = "UPDATE clients SET birth_date = $2 WHERE id = $1"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := pool.Exec(ctx, query, id, value)
+	if err == nil && result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return err
+}
