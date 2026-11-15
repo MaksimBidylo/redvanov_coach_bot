@@ -21,6 +21,7 @@ func (h *telegramHandler) groupCard(ctx context.Context, id int64, name string) 
 	buttons = append(buttons,
 		[]models.InlineKeyboardButton{{Text: "Изменить название", CallbackData: "rename:" + key}},
 		[]models.InlineKeyboardButton{{Text: "Добавить клиента", CallbackData: "client:" + key}},
+		[]models.InlineKeyboardButton{{Text: "Удалить группу", CallbackData: "del:" + key}},
 		[]models.InlineKeyboardButton{{Text: "Назад", CallbackData: "groups"}},
 	)
 	return name + "\n\n" + body, models.InlineKeyboardMarkup{InlineKeyboard: buttons}

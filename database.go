@@ -134,3 +134,18 @@ func updateClientField(ctx context.Context, pool *pgxpool.Pool, id int64, birthD
 	}
 	return err
 }
+
+func deleteGroup(ctx context.Context, pool *pgxpool.Pool, sourceID, targetID int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE clients SET group_id = NULLIF($2::bigint, 0) WHERE group_id = $1", sourceID, targetID); err != nil {
+			return err
+		}
+		result, err := tx.Exec(ctx, "DELETE FROM groups WHERE id = $1", sourceID)
+		if err == nil && result.RowsAffected() == 0 {
+			return pgx.ErrNoRows
+		}
+		return err
+	})
+}
