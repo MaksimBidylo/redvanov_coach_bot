@@ -61,8 +61,10 @@ func TestTelegramClientSearch(t *testing.T) {
 			oldResultKeyboard, oldCardKeyboard = resultKeyboard, cardKeyboard
 		}
 		message.Text = tc.text
+		message.ID = 100
 		update := &models.Update{Message: message}
 		if tc.data != "" {
+			message.ID = 10
 			data := tc.data
 			if strings.HasPrefix(tc.data, "search_") {
 				keyboards := map[string]string{"search_view": resultKeyboard, "search_results": cardKeyboard}

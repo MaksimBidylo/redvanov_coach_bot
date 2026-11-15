@@ -178,6 +178,16 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 	if message.From.ID != h.ownerID || message.Chat.Type != models.ChatTypePrivate {
 		return
 	}
+	revision := h.revision
+	replyExpected := true
+	defer func() {
+		if replyExpected && h.revision == revision {
+			return
+		}
+		if _, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: message.Chat.ID, MessageID: message.ID}); err != nil {
+			log.Printf("Telegram deleteMessage failed: %v", err)
+		}
+	}()
 	text := "Добро пожаловать!"
 	if message.Text == "/start" {
 		h.waitingForGroupName.Store(false)
@@ -191,6 +201,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		return
 	} else {
 		if !h.waitingForGroupName.Load() {
+			replyExpected = false
 			return
 		}
 		name := strings.TrimSpace(message.Text)

@@ -44,8 +44,10 @@ func TestTelegramClientCreation(t *testing.T) {
 			}
 		}
 		message.Text = tc.text
+		message.ID = 100
 		update := &models.Update{Message: message}
 		if tc.data != "" {
+			message.ID = 10
 			update.CallbackQuery = &models.CallbackQuery{
 				ID: "callback", From: *message.From, Data: tc.data,
 				Message: models.MaybeInaccessibleMessage{Message: message},
@@ -150,8 +152,10 @@ func TestTelegramUngroupedClients(t *testing.T) {
 			}
 		}
 		message.Text = tc.text
+		message.ID = 100
 		update := &models.Update{Message: message}
 		if tc.data != "" {
+			message.ID = 10
 			data := tc.data
 			if data == "client_skip" {
 				data = skipData
