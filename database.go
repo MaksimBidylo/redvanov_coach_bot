@@ -110,3 +110,13 @@ func setClientGroup(ctx context.Context, pool *pgxpool.Pool, clientID, groupID i
 	}
 	return err
 }
+
+func renameGroup(ctx context.Context, pool *pgxpool.Pool, id int64, name string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := pool.Exec(ctx, "UPDATE groups SET name = $2 WHERE id = $1", id, name)
+	if err == nil && result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return err
+}

@@ -153,10 +153,10 @@ func telegramTestDatabase(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) (string, string, int) {
+func telegramTestSession(t *testing.T, pool *pgxpool.Pool, failEdit ...int) func(*models.Update) (string, string, int) {
 	t.Helper()
 	var got, keyboard string
-	var messageID, replyID int
+	var messageID, replyID, edits int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		result := `true`
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -169,6 +169,12 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 				t.Errorf("must delete only user input: %v", r.Form)
 			}
 		case "/bot123:test-token/editMessageText", "/bot123:test-token/sendMessage":
+			if r.FormValue("message_id") != "" {
+				edits++
+				if len(failEdit) > 0 && edits == failEdit[0] {
+					return nil, errors.New("offline")
+				}
+			}
 			got, keyboard = r.FormValue("text"), r.FormValue("reply_markup")
 			if r.FormValue("message_id") == "" {
 				messageID++

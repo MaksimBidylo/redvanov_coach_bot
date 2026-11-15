@@ -22,6 +22,7 @@ type telegramHandler struct {
 	menu                models.InlineKeyboardMarkup
 	waitingForGroupName atomic.Bool
 	clientDraft         *clientDraft
+	renameGroupID       int64
 	search              *clientSearch
 	messageID           int
 	revision            int64
@@ -41,7 +42,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	data, revision, versioned := strings.Cut(query.Data, "|")
-	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:")) && revision != strconv.FormatInt(h.revision, 10) {
+	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:")) && revision != strconv.FormatInt(h.revision, 10) {
 		return
 	}
 	query.Data = data
@@ -59,7 +60,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
@@ -75,6 +76,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	h.messageID = message.ID
+	h.renameGroupID = 0
 	if action != "search_view" && action != "move" && query.Data != "search_results" {
 		h.search = nil
 	}
@@ -158,6 +160,15 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			text = "Не удалось загрузить группу. Попробуйте ещё раз."
 		default:
 			text = name
+			if action == "rename" {
+				keyboard.InlineKeyboard[0][0].CallbackData = "group:" + strconv.FormatInt(id, 10)
+				if _, err := h.reply(ctx, b, message.Chat.ID, groupRenamePrompt, keyboard); err != nil {
+					log.Printf("Telegram reply failed: %v", err)
+				} else {
+					h.renameGroupID = id
+				}
+				return
+			}
 			if action == "client" {
 				if _, err := h.reply(ctx, b, message.Chat.ID, clientNamePrompt, h.menu); err != nil {
 					log.Printf("Telegram sendMessage failed: %v", err)
@@ -169,12 +180,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 				}
 				return
 			}
-			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
-				{{Text: "Добавить клиента", CallbackData: "client:" + strconv.FormatInt(id, 10)}},
-			}, keyboard.InlineKeyboard...)
-			body, buttons := h.groupClientsMenu(ctx, &id)
-			text += "\n\n" + body
-			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
+			text, keyboard = h.groupCard(ctx, id, name)
 		}
 	}
 	if h.search != nil && (action == "search_view" || (action == "move" && saveMove)) {
@@ -207,6 +213,10 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.waitingForGroupName.Store(false)
 		h.clientDraft = nil
 		h.search = nil
+		h.renameGroupID = 0
+	} else if h.renameGroupID != 0 {
+		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)
+		return
 	} else if h.search != nil && h.search.messageID == 0 {
 		h.handleClientSearch(ctx, b, message.Chat.ID, message.Text)
 		return
