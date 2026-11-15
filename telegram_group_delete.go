@@ -32,7 +32,7 @@ func (h *telegramHandler) deleteGroupMenu(ctx context.Context, id, target int64,
 		keyboard.InlineKeyboard[0][0].CallbackData = "groups"
 		return "Группа удалена.", keyboard
 	}
-	clients, err := listGroupClients(ctx, h.pool, &id)
+	clients, err := listGroupClients(ctx, h.pool, &id, true)
 	if err != nil {
 		log.Printf("Load group clients failed: %v", err)
 		return "Не удалось подготовить удаление группы. Попробуйте ещё раз.", keyboard

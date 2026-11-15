@@ -38,6 +38,9 @@ func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, ch
 			buttons := make([][]models.InlineKeyboardButton, 0, len(clients)+1)
 			for _, c := range clients {
 				label, groupName := c.Name, "без группы"
+				if c.Archived {
+					label += " (арх)"
+				}
 				if c.BirthDate != nil {
 					label += " (" + c.BirthDate.Format("02.01.2006") + ")"
 				}

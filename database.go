@@ -71,12 +71,13 @@ type client struct {
 	BirthDate *time.Time
 	GroupID   *int64
 	GroupName *string
+	Archived  bool
 }
 
-func listGroupClients(ctx context.Context, pool *pgxpool.Pool, groupID *int64) ([]client, error) {
+func listGroupClients(ctx context.Context, pool *pgxpool.Pool, groupID *int64, includeArchived bool) ([]client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.group_id IS NOT DISTINCT FROM $1::bigint ORDER BY c.name, c.id", groupID)
+	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name, c.archived FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.group_id IS NOT DISTINCT FROM $1::bigint AND (NOT c.archived OR $2::boolean) ORDER BY c.name, c.id", groupID, includeArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -87,14 +88,14 @@ func getClient(ctx context.Context, pool *pgxpool.Pool, id int64) (client, error
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var c client
-	err := pool.QueryRow(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.id = $1", id).Scan(&c.ID, &c.Name, &c.BirthDate, &c.GroupID, &c.GroupName)
+	err := pool.QueryRow(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name, c.archived FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.id = $1", id).Scan(&c.ID, &c.Name, &c.BirthDate, &c.GroupID, &c.GroupName, &c.Archived)
 	return c, err
 }
 
 func searchClients(ctx context.Context, pool *pgxpool.Pool, name string) ([]client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE strpos(lower(c.name), lower($1)) > 0 ORDER BY c.name, c.id LIMIT 21", name)
+	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name, c.archived FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE strpos(lower(c.name), lower($1)) > 0 ORDER BY c.name, c.id LIMIT 21", name)
 	if err != nil {
 		return nil, err
 	}
@@ -148,4 +149,14 @@ func deleteGroup(ctx context.Context, pool *pgxpool.Pool, sourceID, targetID int
 		}
 		return err
 	})
+}
+
+func setClientArchived(ctx context.Context, pool *pgxpool.Pool, id int64, archived bool) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := pool.Exec(ctx, "UPDATE clients SET archived = $2 WHERE id = $1", id, archived)
+	if err == nil && result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return err
 }
