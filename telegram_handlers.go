@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const groupNamePrompt = "Введите название группы. Для отмены — /start."
+const groupNamePrompt = "Введите название группы."
 
 type telegramHandler struct {
 	ownerID             int64
@@ -44,14 +44,14 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	data, revision, versioned := strings.Cut(query.Data, "|")
-	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del") || strings.HasPrefix(data, "archive:") || strings.HasPrefix(data, "restore:")) && revision != strconv.FormatInt(h.revision, 10) {
+	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del") || strings.HasPrefix(data, "archive:") || strings.HasPrefix(data, "restore:") || strings.HasPrefix(data, "gar") || strings.HasPrefix(data, "group_restore:")) && revision != strconv.FormatInt(h.revision, 10) {
 		return
 	}
 	query.Data = data
 	var id, groupID int64
 	action, after, hasID := strings.Cut(query.Data, ":")
 	var hasTarget bool
-	if action == "move" || action == "del" || action == "delc" {
+	if action == "move" || action == "del" || action == "delc" || action == "gar" || action == "garc" {
 		var target string
 		after, target, hasTarget = strings.Cut(after, ":")
 		if hasTarget {
@@ -62,19 +62,19 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" {
+	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" {
 		return
 	}
-	if action == "delc" && !hasTarget {
+	if (action == "delc" || action == "garc") && !hasTarget {
 		return
 	}
-	if (action == "del" || action == "delc") && hasTarget && groupID == id {
+	if (action == "del" || action == "delc" || action == "gar" || action == "garc") && hasTarget && groupID == id {
 		return
 	}
 	if (action == "search_view" || query.Data == "search_results") && (h.search == nil || h.search.messageID == 0) {
@@ -111,7 +111,10 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	if query.Data == "group_create" {
-		if _, err := h.reply(ctx, b, message.Chat.ID, groupNamePrompt, h.menu); err != nil {
+		keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "⬅️ Назад", CallbackData: "groups"}},
+		}}
+		if _, err := h.reply(ctx, b, message.Chat.ID, groupNamePrompt, keyboard); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			h.waitingForGroupName.Store(true)
@@ -125,8 +128,8 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	text, keyboard := "Добро пожаловать!", h.menu
 	if action == "archive" || action == "restore" {
 		text, keyboard = h.changeClientArchive(ctx, id, action == "archive")
-	} else if action == "del" || action == "delc" {
-		text, keyboard = h.deleteGroupMenu(ctx, id, groupID, hasTarget, action == "delc")
+	} else if action == "del" || action == "delc" || action == "gar" || action == "garc" {
+		text, keyboard = h.closeGroupMenu(ctx, id, groupID, hasTarget, action == "delc" || action == "garc", strings.HasPrefix(action, "gar"))
 	} else if action == "move" {
 		text, keyboard = h.changeClientGroup(ctx, id, groupID, hasTarget)
 	} else if action == "client_view" || action == "search_view" {
@@ -135,15 +138,21 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		body, buttons := h.groupClientsMenu(ctx, nil)
 		text = "Клиенты без группы\n\n" + body
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: append(buttons,
-			[]models.InlineKeyboardButton{{Text: "Добавить клиента", CallbackData: "client:0"}},
-			[]models.InlineKeyboardButton{{Text: "Назад", CallbackData: "menu"}},
+			[]models.InlineKeyboardButton{{Text: "➕ Добавить клиента", CallbackData: "client:0"}},
+			[]models.InlineKeyboardButton{{Text: "⬅️ Назад", CallbackData: "menu"}},
 		)}
-	} else if query.Data == "groups" {
+	} else if query.Data == "groups" || query.Data == "archived_groups" {
+		archived := query.Data == "archived_groups"
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-			{{Text: "Добавить группу", CallbackData: "group_create"}},
-			{{Text: "Назад", CallbackData: "menu"}},
+			{{Text: "➕ Добавить группу", CallbackData: "group_create"}},
+			{{Text: "📦 Архив групп", CallbackData: "archived_groups"}},
+			{{Text: "⬅️ Назад", CallbackData: "menu"}},
 		}}
-		groups, err := listGroups(ctx, h.pool)
+		if archived {
+			keyboard.InlineKeyboard = keyboard.InlineKeyboard[len(keyboard.InlineKeyboard)-1:]
+			keyboard.InlineKeyboard[0][0].CallbackData = "groups"
+		}
+		groups, err := listGroups(ctx, h.pool, archived)
 		switch {
 		case err != nil:
 			log.Printf("Load groups failed: %v", err)
@@ -152,21 +161,31 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			text = "Групп пока нет"
 		default:
 			text = "Группы:"
+			if archived {
+				text = "Архив групп:"
+			}
 			buttons := make([][]models.InlineKeyboardButton, 0, len(groups)+len(keyboard.InlineKeyboard))
 			for _, group := range groups {
+				label, action := group.Name, "group:"
+				if archived {
+					label, action = "♻️ Восстановить «"+group.Name+"»", "group_restore:"
+				}
 				buttons = append(buttons, []models.InlineKeyboardButton{{
-					Text: group.Name, CallbackData: "group:" + strconv.FormatInt(group.ID, 10),
+					Text: label, CallbackData: action + strconv.FormatInt(group.ID, 10),
 				}})
 			}
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
 	} else if id > 0 || action == "client" {
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-			{{Text: "Назад", CallbackData: "groups"}},
+			{{Text: "⬅️ Назад", CallbackData: "groups"}},
 		}}
 		var name string
 		var err error
-		if id > 0 {
+		if action == "group_restore" {
+			name, err = restoreGroup(ctx, h.pool, id)
+			keyboard.InlineKeyboard[0][0].CallbackData = "archived_groups"
+		} else if id > 0 {
 			name, err = getGroupName(ctx, h.pool, id)
 		}
 		switch {
@@ -175,6 +194,9 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		case err != nil:
 			log.Printf("Load group failed: %v", err)
 			text = "Не удалось загрузить группу. Попробуйте ещё раз."
+			if action == "group_restore" {
+				text = "Не удалось восстановить группу. Попробуйте ещё раз."
+			}
 		default:
 			text = name
 			if action == "rename" {
@@ -225,14 +247,18 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 			log.Printf("Telegram deleteMessage failed: %v", err)
 		}
 	}()
-	text := "Добро пожаловать!"
 	if message.Text == "/start" {
 		h.waitingForGroupName.Store(false)
 		h.clientDraft = nil
 		h.search = nil
 		h.renameGroupID = 0
 		h.editClientID = 0
-	} else if h.renameGroupID != 0 {
+		if _, err := h.reply(ctx, b, message.Chat.ID, "Добро пожаловать!", h.menu); err != nil {
+			log.Printf("Telegram sendMessage failed: %v", err)
+		}
+		return
+	}
+	if h.renameGroupID != 0 {
 		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)
 		return
 	} else if h.editClientID != 0 {
@@ -244,28 +270,32 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 	} else if h.clientDraft != nil {
 		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, false)
 		return
-	} else {
-		if !h.waitingForGroupName.Load() {
-			replyExpected = false
-			return
-		}
-		name := strings.TrimSpace(message.Text)
-		text = "Название не должно быть пустым.\n" + groupNamePrompt
-		if name != "" {
-			created, err := createGroup(ctx, h.pool, name)
-			switch {
-			case err != nil:
-				log.Printf("Create group failed: %v", err)
-				text = "Не удалось создать группу. Попробуйте ещё раз.\n" + groupNamePrompt
-			case !created:
-				text = "Группа с таким названием уже есть.\n" + groupNamePrompt
-			default:
-				h.waitingForGroupName.Store(false)
-				text = "Группа создана."
-			}
+	}
+
+	if !h.waitingForGroupName.Load() {
+		replyExpected = false
+		return
+	}
+	name := strings.TrimSpace(message.Text)
+	text := "Название не должно быть пустым.\n" + groupNamePrompt
+	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: "⬅️ Назад", CallbackData: "groups"}},
+	}}
+	if name != "" {
+		created, err := createGroup(ctx, h.pool, name)
+		switch {
+		case err != nil:
+			log.Printf("Create group failed: %v", err)
+			text = "Не удалось создать группу. Попробуйте ещё раз.\n" + groupNamePrompt
+		case !created:
+			text = "Группа с таким названием уже есть.\n" + groupNamePrompt
+		default:
+			h.waitingForGroupName.Store(false)
+			text = "Группа создана."
+			keyboard = h.menu
 		}
 	}
-	_, err := h.reply(ctx, b, message.Chat.ID, text, h.menu)
+	_, err := h.reply(ctx, b, message.Chat.ID, text, keyboard)
 	if err != nil {
 		log.Printf("Telegram sendMessage failed: %v", err)
 	}

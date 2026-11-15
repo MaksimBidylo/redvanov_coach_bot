@@ -32,13 +32,13 @@ func (h *telegramHandler) handleClientEdit(ctx context.Context, b *bot.Bot, chat
 		}
 	}
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: "Назад", CallbackData: back}},
+		{{Text: "⬅️ Назад", CallbackData: back}},
 	}}
 	if !waiting {
 		text = "Изменение даты рождения."
 		keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
-			{{Text: "Ввести новую дату", CallbackData: "edit_date:" + key}},
-			{{Text: "Удалить дату", CallbackData: "edit_clear:" + key}},
+			{{Text: "📅 Ввести новую дату", CallbackData: "edit_date:" + key}},
+			{{Text: "🗑️ Удалить дату", CallbackData: "edit_clear:" + key}},
 		}, keyboard.InlineKeyboard...)
 	}
 	save := action == "edit_clear"

@@ -33,10 +33,10 @@ type group struct {
 	Name string
 }
 
-func listGroups(ctx context.Context, pool *pgxpool.Pool) ([]group, error) {
+func listGroups(ctx context.Context, pool *pgxpool.Pool, archived bool) ([]group, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := pool.Query(ctx, "SELECT id, name FROM groups ORDER BY name")
+	rows, err := pool.Query(ctx, "SELECT id, name FROM groups WHERE archived = $1 ORDER BY name", archived)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func getGroupName(ctx context.Context, pool *pgxpool.Pool, id int64) (string, er
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var name string
-	err := pool.QueryRow(ctx, "SELECT name FROM groups WHERE id = $1", id).Scan(&name)
+	err := pool.QueryRow(ctx, "SELECT name FROM groups WHERE id = $1 AND NOT archived", id).Scan(&name)
 	return name, err
 }
 
@@ -105,7 +105,7 @@ func searchClients(ctx context.Context, pool *pgxpool.Pool, name string) ([]clie
 func setClientGroup(ctx context.Context, pool *pgxpool.Pool, clientID, groupID int64) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	result, err := pool.Exec(ctx, "UPDATE clients SET group_id = NULLIF($2::bigint, 0) WHERE id = $1", clientID, groupID)
+	result, err := pool.Exec(ctx, "UPDATE clients SET group_id = NULLIF($2::bigint, 0) WHERE id = $1 AND ($2::bigint = 0 OR EXISTS (SELECT 1 FROM groups WHERE id = $2 AND NOT archived))", clientID, groupID)
 	if err == nil && result.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
@@ -136,19 +136,36 @@ func updateClientField(ctx context.Context, pool *pgxpool.Pool, id int64, birthD
 	return err
 }
 
-func deleteGroup(ctx context.Context, pool *pgxpool.Pool, sourceID, targetID int64) error {
+func closeGroup(ctx context.Context, pool *pgxpool.Pool, sourceID, targetID int64, archive bool) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	query := "DELETE FROM groups WHERE id = $1 AND NOT archived"
+	if archive {
+		query = "UPDATE groups SET archived = TRUE WHERE id = $1 AND NOT archived"
+	}
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if targetID > 0 {
+			if err := tx.QueryRow(ctx, "SELECT id FROM groups WHERE id = $1 AND id <> $2 AND NOT archived FOR SHARE", targetID, sourceID).Scan(&targetID); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(ctx, "UPDATE clients SET group_id = NULLIF($2::bigint, 0) WHERE group_id = $1", sourceID, targetID); err != nil {
 			return err
 		}
-		result, err := tx.Exec(ctx, "DELETE FROM groups WHERE id = $1", sourceID)
+		result, err := tx.Exec(ctx, query, sourceID)
 		if err == nil && result.RowsAffected() == 0 {
 			return pgx.ErrNoRows
 		}
 		return err
 	})
+}
+
+func restoreGroup(ctx context.Context, pool *pgxpool.Pool, id int64) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var name string
+	err := pool.QueryRow(ctx, "UPDATE groups SET archived = FALSE WHERE id = $1 RETURNING name", id).Scan(&name)
+	return name, err
 }
 
 func setClientArchived(ctx context.Context, pool *pgxpool.Pool, id int64, archived bool) error {

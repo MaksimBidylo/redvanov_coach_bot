@@ -19,10 +19,11 @@ func (h *telegramHandler) groupCard(ctx context.Context, id int64, name string) 
 	body, buttons := h.groupClientsMenu(ctx, &id)
 	key := strconv.FormatInt(id, 10)
 	buttons = append(buttons,
-		[]models.InlineKeyboardButton{{Text: "Изменить название", CallbackData: "rename:" + key}},
-		[]models.InlineKeyboardButton{{Text: "Добавить клиента", CallbackData: "client:" + key}},
-		[]models.InlineKeyboardButton{{Text: "Удалить группу", CallbackData: "del:" + key}},
-		[]models.InlineKeyboardButton{{Text: "Назад", CallbackData: "groups"}},
+		[]models.InlineKeyboardButton{{Text: "✏️ Изменить название", CallbackData: "rename:" + key}},
+		[]models.InlineKeyboardButton{{Text: "➕ Добавить клиента", CallbackData: "client:" + key}},
+		[]models.InlineKeyboardButton{{Text: "📦 В архив", CallbackData: "gar:" + key}},
+		[]models.InlineKeyboardButton{{Text: "🗑️ Удалить группу", CallbackData: "del:" + key}},
+		[]models.InlineKeyboardButton{{Text: "⬅️ Назад", CallbackData: "groups"}},
 	)
 	return name + "\n\n" + body, models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 }
@@ -32,7 +33,7 @@ func (h *telegramHandler) handleGroupRename(ctx context.Context, b *bot.Bot, cha
 	name := strings.TrimSpace(value)
 	text := "Название не должно быть пустым.\n" + groupRenamePrompt
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: "Назад", CallbackData: "group:" + strconv.FormatInt(id, 10)}},
+		{{Text: "⬅️ Назад", CallbackData: "group:" + strconv.FormatInt(id, 10)}},
 	}}
 	if name != "" {
 		err := renameGroup(ctx, h.pool, id, name)

@@ -44,7 +44,7 @@ func (h *telegramHandler) groupClientsMenu(ctx context.Context, groupID *int64) 
 
 func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, models.InlineKeyboardMarkup) {
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: "Назад", CallbackData: "groups"}},
+		{{Text: "⬅️ Назад", CallbackData: "groups"}},
 	}}
 	c, err := getClient(ctx, h.pool, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -66,15 +66,15 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 	if c.GroupName != nil {
 		groupName = *c.GroupName
 	}
-	name, archiveText, archiveAction := c.Name, "В архив", "archive:"
+	name, archiveText, archiveAction := c.Name, "📦 В архив", "archive:"
 	if c.Archived {
 		name += " (арх)"
-		archiveText, archiveAction = "Восстановить", "restore:"
+		archiveText, archiveAction = "♻️ Восстановить", "restore:"
 	}
 	keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
-		{{Text: "Изменить имя", CallbackData: "edit_name:" + strconv.FormatInt(c.ID, 10)}},
-		{{Text: "Изменить дату рождения", CallbackData: "edit_birth:" + strconv.FormatInt(c.ID, 10)}},
-		{{Text: "Сменить группу", CallbackData: "move:" + strconv.FormatInt(c.ID, 10)}},
+		{{Text: "✏️ Изменить имя", CallbackData: "edit_name:" + strconv.FormatInt(c.ID, 10)}},
+		{{Text: "📅 Изменить дату рождения", CallbackData: "edit_birth:" + strconv.FormatInt(c.ID, 10)}},
+		{{Text: "🔄 Сменить группу", CallbackData: "move:" + strconv.FormatInt(c.ID, 10)}},
 		{{Text: archiveText, CallbackData: archiveAction + strconv.FormatInt(c.ID, 10)}},
 	}, keyboard.InlineKeyboard...)
 	return name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
@@ -93,7 +93,7 @@ func (h *telegramHandler) changeClientArchive(ctx context.Context, id int64, arc
 func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value string, skip bool) {
 	draft := h.clientDraft
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: "Пропустить", CallbackData: "client_skip"}},
+		{{Text: "⏭️ Пропустить", CallbackData: "client_skip"}},
 	}}
 	if draft.name == "" {
 		name := strings.TrimSpace(value)

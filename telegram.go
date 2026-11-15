@@ -23,9 +23,9 @@ func newTelegramBot(owner, token string, pool *pgxpool.Pool, options ...bot.Opti
 		ownerID: ownerID,
 		pool:    pool,
 		menu: models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-			{{Text: "Группы", CallbackData: "groups"}},
-			{{Text: "Клиенты без группы", CallbackData: "ungrouped"}},
-			{{Text: "Найти клиента", CallbackData: "search"}},
+			{{Text: "👥 Группы", CallbackData: "groups"}},
+			{{Text: "👤 Клиенты без группы", CallbackData: "ungrouped"}},
+			{{Text: "🔍 Найти клиента", CallbackData: "search"}},
 		}},
 	}
 	h.revision = time.Now().UnixNano()
