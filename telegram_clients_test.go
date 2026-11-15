@@ -19,7 +19,7 @@ func TestTelegramClientCreation(t *testing.T) {
 		text, data, want, sql, button string
 		old                           bool
 	}{
-		{"", "group:1", "Взрослая утро", "", "client:1", false},
+		{"", "group:1", "Взрослая утро\n\nКлиентов пока нет.", "", "client:1", false},
 		{"", "client:1", clientNamePrompt, "", "", false},
 		{"", "client_skip", "", "", "", false},
 		{" \n ", "", "Имя не должно быть пустым.\n" + clientNamePrompt, "", "", false},

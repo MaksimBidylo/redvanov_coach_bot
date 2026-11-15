@@ -123,6 +123,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
 				{{Text: "Добавить клиента", CallbackData: "client:" + strconv.FormatInt(groupID, 10)}},
 			}, keyboard.InlineKeyboard...)
+			text += "\n\n" + h.groupClientsText(ctx, groupID)
 		}
 	}
 	if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{

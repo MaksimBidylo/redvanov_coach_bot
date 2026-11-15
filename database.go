@@ -64,3 +64,18 @@ func createClient(ctx context.Context, pool *pgxpool.Pool, name string, birthDat
 	_, err := pool.Exec(ctx, "INSERT INTO clients (name, birth_date, group_id) VALUES ($1, $2, $3)", name, birthDate, groupID)
 	return err
 }
+
+type client struct {
+	Name      string
+	BirthDate *time.Time
+}
+
+func listGroupClients(ctx context.Context, pool *pgxpool.Pool, groupID int64) ([]client, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := pool.Query(ctx, "SELECT name, birth_date FROM clients WHERE group_id = $1 ORDER BY name, id", groupID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[client])
+}
