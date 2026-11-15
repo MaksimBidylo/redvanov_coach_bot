@@ -89,7 +89,7 @@ func TestTelegramClientSearch(t *testing.T) {
 		if got != tc.want || !strings.Contains(keyboard, tc.fragment) {
 			t.Fatalf("query %q, callback %q: got %q, want %q; keyboard=%s", tc.text, tc.data, got, tc.want, keyboard)
 		}
-		if strings.Contains(got, clientSearchPrompt) && keyboard != `{"inline_keyboard":[[{"text":"Назад","callback_data":"menu"}]]}` {
+		if strings.Contains(got, clientSearchPrompt) && keyboard != `{"inline_keyboard":[[{"text":"⬅️ Назад","callback_data":"menu"}]]}` {
 			t.Fatalf("search prompt must offer only Back: %s", keyboard)
 		}
 		if tc.count > 0 && strings.Count(keyboard, `"callback_data":"search_view:`) != tc.count {

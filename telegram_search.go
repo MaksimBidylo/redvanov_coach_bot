@@ -20,7 +20,7 @@ type clientSearch struct {
 func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, chatID int64, query string) {
 	query = strings.TrimSpace(query)
 	text, keyboard := clientSearchPrompt, models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: "Назад", CallbackData: "menu"}},
+		{{Text: "⬅️ Назад", CallbackData: "menu"}},
 	}}
 	ready := false
 	if query != "" {
@@ -49,7 +49,7 @@ func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, ch
 				}
 				buttons = append(buttons, []models.InlineKeyboardButton{{Text: label + " — " + groupName, CallbackData: "search_view:" + strconv.FormatInt(c.ID, 10)}})
 			}
-			keyboard = models.InlineKeyboardMarkup{InlineKeyboard: append(buttons, []models.InlineKeyboardButton{{Text: "Назад", CallbackData: "menu"}})}
+			keyboard = models.InlineKeyboardMarkup{InlineKeyboard: append(buttons, []models.InlineKeyboardButton{{Text: "⬅️ Назад", CallbackData: "menu"}})}
 		}
 	}
 	messageID, err := h.reply(ctx, b, chatID, text, keyboard)

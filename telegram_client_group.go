@@ -24,9 +24,9 @@ func (h *telegramHandler) changeClientGroup(ctx context.Context, clientID, group
 		back = "search_view:" + id
 	}
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: "Назад", CallbackData: back}},
+		{{Text: "⬅️ Назад", CallbackData: back}},
 	}}
-	groups, err := listGroups(ctx, h.pool)
+	groups, err := listGroups(ctx, h.pool, false)
 	if err != nil {
 		log.Printf("Load groups failed: %v", err)
 		return "Не удалось загрузить группы. Попробуйте ещё раз.", keyboard
@@ -35,7 +35,7 @@ func (h *telegramHandler) changeClientGroup(ctx context.Context, clientID, group
 	for _, group := range groups {
 		buttons = append(buttons, []models.InlineKeyboardButton{{Text: group.Name, CallbackData: "move:" + id + ":" + strconv.FormatInt(group.ID, 10)}})
 	}
-	buttons = append(buttons, []models.InlineKeyboardButton{{Text: "Без группы", CallbackData: "move:" + id + ":0"}})
+	buttons = append(buttons, []models.InlineKeyboardButton{{Text: "👤 Без группы", CallbackData: "move:" + id + ":0"}})
 	keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 	return "Выберите группу:", keyboard
 }

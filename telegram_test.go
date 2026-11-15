@@ -268,7 +268,7 @@ func TestTelegramMenu(t *testing.T) {
 			if tc.name == "clients" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"Анна (15.03.2010)","callback_data":"client_view:2"}],[{"text":"Иван","callback_data":"client_view:1"}],[{"text":"Иван (20.04.2000)","callback_data":"client_view:3"}]`) {
 				t.Fatalf("unexpected client buttons: %s", keyboard)
 			}
-			if tc.name == "ungrouped clients" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"Персональный","callback_data":"client_view:5"}],[{"text":"Добавить клиента","callback_data":"client:0"}]`) {
+			if tc.name == "ungrouped clients" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"Персональный","callback_data":"client_view:5"}],[{"text":"➕ Добавить клиента","callback_data":"client:0"}]`) {
 				t.Fatalf("unexpected ungrouped client buttons: %s", keyboard)
 			}
 			if tc.name == "populated" && !strings.HasPrefix(keyboard, `{"inline_keyboard":[[{"text":"А утро","callback_data":"group:2"}],[{"text":"Б вечер","callback_data":"group:1"}]`) {
@@ -281,6 +281,7 @@ func TestTelegramMenu(t *testing.T) {
 func TestTelegramGroupCreation(t *testing.T) {
 	pool := telegramTestDatabase(t)
 	process := telegramTestSession(t, pool)
+	var previousKeyboard string
 	for _, tc := range []struct {
 		name, text, data string
 		owner            int64
@@ -288,7 +289,7 @@ func TestTelegramGroupCreation(t *testing.T) {
 		sql              string
 	}{
 		{"idle", "Лишняя", "", 7, "", ""},
-		{"begin", "", "group_create", 7, groupNamePrompt, ""},
+		{"begin", "", "group_create", 7, "Введите название группы.", ""},
 		{"invalid callback", "", "group:invalid", 7, "", ""},
 		{"other user", "Чужая", "", 8, "", ""},
 		{"empty", " \n ", "", 7, "Название не должно быть пустым.\n" + groupNamePrompt, ""},
@@ -323,17 +324,27 @@ func TestTelegramGroupCreation(t *testing.T) {
 		update := &models.Update{Message: message}
 		if tc.data != "" {
 			message.ID = 10
+			data := tc.data
+			if tc.name == "back" {
+				data = telegramTestCallback(t, previousKeyboard, "groups")
+			}
 			update = &models.Update{CallbackQuery: &models.CallbackQuery{
-				ID: "callback", From: *message.From, Data: tc.data,
+				ID: "callback", From: *message.From, Data: data,
 				Message: models.MaybeInaccessibleMessage{Message: message},
 			}}
 		}
 		got, keyboard, _ := process(update)
+		if got != "" {
+			previousKeyboard = keyboard
+		}
 		if got != tc.want {
 			t.Fatalf("%s: text = %q, want %q", tc.name, got, tc.want)
 		}
 		if strings.Contains(keyboard, `"force_reply":true`) {
 			t.Fatalf("%s: name input must not force a reply", tc.name)
+		}
+		if strings.Contains(tc.want, groupNamePrompt) && keyboard != `{"inline_keyboard":[[{"text":"⬅️ Назад","callback_data":"groups"}]]}` {
+			t.Fatalf("%s: name input must have only Back: %s", tc.name, keyboard)
 		}
 		button := "groups"
 		if tc.data == "groups" {
@@ -343,7 +354,7 @@ func TestTelegramGroupCreation(t *testing.T) {
 			t.Fatalf("%s: missing return button", tc.name)
 		}
 	}
-	groups, err := listGroups(t.Context(), pool)
+	groups, err := listGroups(t.Context(), pool, false)
 	if err != nil || len(groups) != 3 || groups[0].Name != "Взрослая утро" || groups[1].Name != "Выходные" || groups[2].Name != "Детская" {
 		t.Fatalf("saved groups = %v, error = %v", groups, err)
 	}
