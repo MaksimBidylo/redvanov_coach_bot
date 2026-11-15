@@ -90,3 +90,13 @@ func getClient(ctx context.Context, pool *pgxpool.Pool, id int64) (client, error
 	err := pool.QueryRow(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.id = $1", id).Scan(&c.ID, &c.Name, &c.BirthDate, &c.GroupID, &c.GroupName)
 	return c, err
 }
+
+func searchClients(ctx context.Context, pool *pgxpool.Pool, name string) ([]client, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE strpos(lower(c.name), lower($1)) > 0 ORDER BY c.name, c.id LIMIT 21", name)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[client])
+}

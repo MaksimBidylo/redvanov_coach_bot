@@ -22,6 +22,7 @@ type telegramHandler struct {
 	menu                models.InlineKeyboardMarkup
 	waitingForGroupName atomic.Bool
 	clientDraft         *clientDraft
+	search              *clientSearch
 }
 
 func (h *telegramHandler) handle(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -39,17 +40,23 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	}
 	var id int64
 	action, after, hasID := strings.Cut(query.Data, ":")
-	if hasID && (action == "group" || action == "client" || action == "client_view") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" {
+	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" {
+		return
+	}
+	if (action == "search_view" || query.Data == "search_results") && (h.search == nil || h.search.messageID == 0 || message.ID != h.search.messageID) {
 		return
 	}
 	if query.Data == "client_skip" && (h.clientDraft == nil || h.clientDraft.name == "" || message.ID != h.clientDraft.promptID) {
 		return
+	}
+	if action != "search_view" && query.Data != "search_results" {
+		h.search = nil
 	}
 	if query.Data != "client_skip" {
 		h.clientDraft = nil
@@ -59,6 +66,14 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	}
 	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
 		log.Printf("Telegram answerCallbackQuery failed: %v", err)
+	}
+	if query.Data == "search" {
+		h.handleClientSearch(ctx, b, message.Chat.ID, 0, "")
+		return
+	}
+	if query.Data == "search_results" {
+		h.handleClientSearch(ctx, b, message.Chat.ID, message.ID, h.search.query)
+		return
 	}
 	if query.Data == "client_skip" {
 		h.handleClientInput(ctx, b, message.Chat.ID, "", true)
@@ -75,8 +90,11 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	text, keyboard := "Добро пожаловать!", h.menu
-	if action == "client_view" {
+	if action == "client_view" || action == "search_view" {
 		text, keyboard = h.clientCard(ctx, id)
+		if action == "search_view" {
+			keyboard.InlineKeyboard[0][0].CallbackData = "search_results"
+		}
 	} else if query.Data == "ungrouped" {
 		body, buttons := h.groupClientsMenu(ctx, nil)
 		text = "Клиенты без группы\n\n" + body
@@ -160,6 +178,10 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 	if message.Text == "/start" {
 		h.waitingForGroupName.Store(false)
 		h.clientDraft = nil
+		h.search = nil
+	} else if h.search != nil && h.search.messageID == 0 {
+		h.handleClientSearch(ctx, b, message.Chat.ID, 0, message.Text)
+		return
 	} else if h.clientDraft != nil {
 		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, false)
 		return
