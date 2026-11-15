@@ -64,9 +64,9 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
-		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client" && action != "ledger_page" && action != "ledger_view") {
+		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client" && action != "ledger_page" && action != "ledger_view" && action != "ledger_delete" && action != "ledger_confirm") {
 			return
 		}
 		id = parsedID

@@ -23,6 +23,19 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 	if history == nil {
 		return
 	}
+	problem := ""
+	if action == "ledger_confirm" {
+		if id >= int64(len(history.payments)) {
+			return
+		}
+		payment := history.payments[id]
+		if err := deleteClientPayment(ctx, h.pool, history.clientID, payment.ID, payment.Personal); err != nil {
+			log.Printf("Delete client payment failed: %v", err)
+			problem, action = "Не удалось удалить оплату. Попробуйте ещё раз.\n\n", "ledger_delete"
+		} else {
+			problem, action, id = "Оплата удалена.\n\n", "ledger_page", history.page
+		}
+	}
 	next := *history
 	text := "Оплаты:"
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
@@ -34,7 +47,7 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 		if h.search != nil {
 			keyboard.InlineKeyboard[len(keyboard.InlineKeyboard)-1][0].CallbackData = "search_results"
 		}
-	case "ledger_view":
+	case "ledger_view", "ledger_delete":
 		if id >= int64(len(history.payments)) {
 			return
 		}
@@ -44,6 +57,13 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 			text = fmt.Sprintf("Групповая оплата\nСумма: %d ₽\nДата получения денег: %s\nГруппа: %s\nМесяц занятий: %s", payment.AmountRub, payment.ReceivedOn.Format("02.01.2006"), *payment.GroupName, payment.TrainingMonth.Format("01.2006"))
 		}
 		keyboard.InlineKeyboard[0][0].CallbackData = "ledger_page:" + strconv.FormatInt(history.page, 10)
+		button, callback := "🗑️ Удалить", "ledger_delete:"
+		if action == "ledger_delete" {
+			text = "Удалить оплату?\n\n" + text
+			button, callback = "🗑️ Подтвердить удаление", "ledger_confirm:"
+			keyboard.InlineKeyboard[0][0].CallbackData = "ledger_view:" + strconv.FormatInt(id, 10)
+		}
+		keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: button, CallbackData: callback + strconv.FormatInt(id, 10)}}}, keyboard.InlineKeyboard...)
 	case "ledger", "ledger_page":
 		if action == "ledger_page" {
 			next.page = id
@@ -52,6 +72,10 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 			return
 		}
 		payments, err := listClientPayments(ctx, h.pool, next.clientID, next.page)
+		if err == nil && len(payments) == 0 && next.page > 0 {
+			next.page--
+			payments, err = listClientPayments(ctx, h.pool, next.clientID, next.page)
+		}
 		next.payments = nil
 		switch {
 		case err != nil:
@@ -78,7 +102,7 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
 	}
-	if _, err := h.reply(ctx, b, chatID, text, keyboard); err != nil {
+	if _, err := h.reply(ctx, b, chatID, problem+text, keyboard); err != nil {
 		log.Printf("Telegram payment history reply failed: %v", err)
 	} else {
 		h.paymentHistory = &next
