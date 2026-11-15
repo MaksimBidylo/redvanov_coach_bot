@@ -57,7 +57,7 @@ func TestTelegramGroupPaymentLostReply(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(faultPool.Close)
-	process := telegramTestSession(t, faultPool, 6)
+	process := telegramTestSession(t, faultPool, 7)
 	message := &models.Message{From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
 	var keyboard, preview string
 	for _, tc := range []struct {
@@ -65,6 +65,7 @@ func TestTelegramGroupPaymentLostReply(t *testing.T) {
 	}{
 		{"client_view:1", "", "", ""},
 		{"payment:1", "", "", ""},
+		{"payment_group", "", "", ""},
 		{"", "3000", "", ""},
 		{"", "01.2027", "", ""},
 		{"", "15.11.2026", "", ""},

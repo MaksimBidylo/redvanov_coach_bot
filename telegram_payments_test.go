@@ -13,7 +13,7 @@ func TestTelegramGroupPayment(t *testing.T) {
 	if _, err := pool.Exec(t.Context(), `INSERT INTO groups (name) VALUES ('Утро'); INSERT INTO clients (name, group_id) VALUES ('Иван', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	process := telegramTestSession(t, pool, 19)
+	process := telegramTestSession(t, pool, 22)
 	message := &models.Message{From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
 	moscow := time.FixedZone("MSK", 3*60*60)
 	var keyboard, save, monthBefore, monthAfter string
@@ -22,10 +22,13 @@ func TestTelegramGroupPayment(t *testing.T) {
 		count                  int
 	}{
 		{"client_view:1", "", "Иван\n", "", 0},
-		{"payment:1", "", "Введите сумму", "", 0},
+		{"payment:1", "", "Выберите тип оплаты.", "", 0},
+		{"payment_group", "", "Введите сумму", "", 0},
+		{"payment_back", "", "Выберите тип оплаты.", "", 0},
 		{"payment_back", "", "Иван\n", "", 0},
 		{"", "999", "", "", 0},
-		{"payment:1", "", "Введите сумму", "", 0},
+		{"payment:1", "", "Выберите тип оплаты.", "", 0},
+		{"payment_group", "", "Введите сумму", "", 0},
 		{"", "0", "положительную целую сумму", "", 0},
 		{"", "9223372036854775808", "положительную целую сумму", "", 0},
 		{"", "3000", "Введите месяц", "", 0},
@@ -95,5 +98,85 @@ func TestTelegramGroupPayment(t *testing.T) {
 	err := pool.QueryRow(t.Context(), "SELECT client_id, group_id, amount_rub, training_month::text, received_on::text FROM group_payments").Scan(&clientID, &groupID, &amount, &month, &received)
 	if err != nil || clientID != 1 || groupID != 1 || amount != 3000 || month != "2027-01-01" || received != "2026-11-16" {
 		t.Fatalf("saved payment=%d/%d/%d/%s/%s, error=%v", clientID, groupID, amount, month, received, err)
+	}
+}
+
+func TestTelegramPersonalPayment(t *testing.T) {
+	pool := telegramTestDatabase(t)
+	if _, err := pool.Exec(t.Context(), `INSERT INTO groups (name) VALUES ('Утро');
+		INSERT INTO clients (name, group_id, archived) VALUES ('Иван', 1, FALSE), ('Без группы', NULL, FALSE), ('Архивный', NULL, TRUE)`); err != nil {
+		t.Fatal(err)
+	}
+	process := telegramTestSession(t, pool, 14)
+	message := &models.Message{From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
+	var keyboard, save string
+	for _, tc := range []struct {
+		data, input, want string
+		count             int
+	}{
+		{"client_view:1", "", "Иван\n", 0},
+		{"payment:1", "", "Выберите тип оплаты.", 0},
+		{"payment_personal", "", "Введите сумму", 0},
+		{"", "3000", "Введите дату получения", 0},
+		{"payment_back", "", "Введите сумму", 0},
+		{"payment_back", "", "Выберите тип оплаты.", 0},
+		{"payment_back", "", "Иван\n", 0},
+		{"payment:1", "", "Выберите тип оплаты.", 0},
+		{"payment_personal", "", "Введите сумму", 0},
+		{"", "3000", "Введите дату получения", 0},
+		{"payment_current", "", "Проверьте персональную оплату:", 0},
+		{"payment_back", "", "Введите дату получения", 0},
+		{"", "15.11.2026", "Проверьте персональную оплату:\nКлиент: Иван\nСумма: 3000 ₽\nДата получения денег: 15.11.2026", 0},
+		{"payment_save", "", "", 1},
+		{"", "/start", "Оплата сохранена", 1},
+		{"old", "", "", 1},
+		{"client_view:2", "", "Без группы\n", 1},
+		{"payment:2", "", "Введите сумму", 1},
+		{"payment_back", "", "Без группы\n", 1},
+		{"payment:2", "", "Введите сумму", 1},
+		{"", "900", "Введите дату получения", 1},
+		{"", "16.11.2026", "Проверьте персональную оплату:", 1},
+		{"payment_save", "", "Оплата сохранена", 2},
+		{"client_view:3", "", "Архивный (арх)\n", 2},
+		{"payment:3", "", "Введите сумму", 2},
+	} {
+		message.ID, message.Text = 100, tc.input
+		update := &models.Update{Message: message}
+		if tc.data != "" {
+			message.ID = 10
+			data := tc.data
+			if data == "old" {
+				data = save
+			} else if strings.HasPrefix(data, "payment") {
+				data = telegramTestCallback(t, keyboard, data)
+				if tc.data == "payment_save" {
+					save = data
+				}
+			}
+			update.CallbackQuery = &models.CallbackQuery{ID: "callback", From: *message.From, Data: data, Message: models.MaybeInaccessibleMessage{Message: message}}
+		}
+		before := time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006")
+		got, next, _ := process(update)
+		after := time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006")
+		if (tc.want == "" && got != "") || (tc.want != "" && !strings.Contains(got, tc.want)) {
+			t.Fatalf("%s/%q: got %q, want %q", tc.data, tc.input, got, tc.want)
+		}
+		if tc.data == "payment_current" && !strings.Contains(got, "Дата получения денег: "+before) && !strings.Contains(got, "Дата получения денег: "+after) {
+			t.Fatalf("today must use Moscow time: %q", got)
+		}
+		if strings.HasPrefix(got, "Проверьте персональную оплату:") && (strings.Contains(got, "Группа:") || strings.Contains(got, "Месяц занятий:")) {
+			t.Fatalf("personal preview contains group payment fields: %q", got)
+		}
+		if got != "" {
+			keyboard = next
+		}
+		var personal, group int
+		if err := pool.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM personal_payments), (SELECT count(*) FROM group_payments)").Scan(&personal, &group); err != nil || personal != tc.count || group != 0 {
+			t.Fatalf("%s: personal=%d, group=%d, want %d/0, error=%v", tc.data, personal, group, tc.count, err)
+		}
+	}
+	var payments string
+	if err := pool.QueryRow(t.Context(), "SELECT string_agg(concat(client_id, '/', amount_rub, '/', received_on), ',' ORDER BY client_id) FROM personal_payments").Scan(&payments); err != nil || payments != "1/3000/2026-11-15,2/900/2026-11-16" {
+		t.Fatalf("saved personal payments=%q, error=%v", payments, err)
 	}
 }
