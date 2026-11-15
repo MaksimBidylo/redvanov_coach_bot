@@ -14,7 +14,7 @@ func TestTelegramClientCreation(t *testing.T) {
 	}
 	process := telegramTestSession(t, pool)
 	message := &models.Message{ID: 10, From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
-	var promptID, oldPromptID int
+	skipData, oldSkipData := "client_skip", "client_skip"
 	for _, tc := range []struct {
 		text, data, want, sql, button string
 		old                           bool
@@ -51,24 +51,24 @@ func TestTelegramClientCreation(t *testing.T) {
 				Message: models.MaybeInaccessibleMessage{Message: message},
 			}
 			if tc.data == "client_skip" {
-				message.ID = promptID
+				update.CallbackQuery.Data = skipData
 				if tc.old {
-					message.ID = oldPromptID
+					update.CallbackQuery.Data = oldSkipData
 				}
 			}
 		}
-		got, keyboard, replyID := process(update)
-		if strings.Contains(keyboard, `"callback_data":"client_skip"`) {
-			promptID = replyID
+		got, keyboard, _ := process(update)
+		if strings.Contains(keyboard, `"callback_data":"client_skip|`) {
+			skipData = telegramTestCallback(t, keyboard, "client_skip")
 		}
 		if got == "Клиент создан." {
-			oldPromptID = promptID
+			oldSkipData = skipData
 		}
 		if got != tc.want {
 			t.Fatalf("text %q, callback %q: got %q, want %q", tc.text, tc.data, got, tc.want)
 		}
-		if tc.button != "" && !strings.Contains(keyboard, `"callback_data":"`+tc.button+`"`) {
-			t.Fatalf("missing %q button in %s", tc.button, keyboard)
+		if tc.button != "" {
+			telegramTestCallback(t, keyboard, tc.button)
 		}
 	}
 	var total, dated, undated int
@@ -124,7 +124,7 @@ func TestTelegramUngroupedClients(t *testing.T) {
 	}
 	process := telegramTestSession(t, pool)
 	message := &models.Message{ID: 10, From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
-	var promptID int
+	skipData := "client_skip"
 	for _, tc := range []struct {
 		text, data, want, sql, button string
 	}{
@@ -152,23 +152,24 @@ func TestTelegramUngroupedClients(t *testing.T) {
 		message.Text = tc.text
 		update := &models.Update{Message: message}
 		if tc.data != "" {
-			if tc.data == "client_skip" {
-				message.ID = promptID
+			data := tc.data
+			if data == "client_skip" {
+				data = skipData
 			}
 			update.CallbackQuery = &models.CallbackQuery{
-				ID: "callback", From: *message.From, Data: tc.data,
+				ID: "callback", From: *message.From, Data: data,
 				Message: models.MaybeInaccessibleMessage{Message: message},
 			}
 		}
-		got, keyboard, replyID := process(update)
-		if strings.Contains(keyboard, `"callback_data":"client_skip"`) {
-			promptID = replyID
+		got, keyboard, _ := process(update)
+		if strings.Contains(keyboard, `"callback_data":"client_skip|`) {
+			skipData = telegramTestCallback(t, keyboard, "client_skip")
 		}
 		if got != tc.want {
 			t.Fatalf("text %q, callback %q: got %q, want %q", tc.text, tc.data, got, tc.want)
 		}
-		if tc.button != "" && !strings.Contains(keyboard, `"callback_data":"`+tc.button+`"`) {
-			t.Fatalf("missing %q button in %s", tc.button, keyboard)
+		if tc.button != "" {
+			telegramTestCallback(t, keyboard, tc.button)
 		}
 	}
 	var total, created int

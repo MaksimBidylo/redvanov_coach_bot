@@ -23,6 +23,8 @@ type telegramHandler struct {
 	waitingForGroupName atomic.Bool
 	clientDraft         *clientDraft
 	search              *clientSearch
+	messageID           int
+	revision            int64
 }
 
 func (h *telegramHandler) handle(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -35,9 +37,14 @@ func (h *telegramHandler) handle(ctx context.Context, b *bot.Bot, update *models
 
 func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query *models.CallbackQuery) {
 	message := query.Message.Message
-	if query.From.ID != h.ownerID || message == nil || message.Chat.Type != models.ChatTypePrivate {
+	if query.From.ID != h.ownerID || message == nil || message.Chat.Type != models.ChatTypePrivate || (h.messageID != 0 && message.ID != h.messageID) {
 		return
 	}
+	data, revision, versioned := strings.Cut(query.Data, "|")
+	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_")) && revision != strconv.FormatInt(h.revision, 10) {
+		return
+	}
+	query.Data = data
 	var id int64
 	action, after, hasID := strings.Cut(query.Data, ":")
 	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view") {
@@ -49,12 +56,13 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" {
 		return
 	}
-	if (action == "search_view" || query.Data == "search_results") && (h.search == nil || h.search.messageID == 0 || message.ID != h.search.messageID) {
+	if (action == "search_view" || query.Data == "search_results") && (h.search == nil || h.search.messageID == 0) {
 		return
 	}
 	if query.Data == "client_skip" && (h.clientDraft == nil || h.clientDraft.name == "" || message.ID != h.clientDraft.promptID) {
 		return
 	}
+	h.messageID = message.ID
 	if action != "search_view" && query.Data != "search_results" {
 		h.search = nil
 	}
@@ -68,11 +76,11 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		log.Printf("Telegram answerCallbackQuery failed: %v", err)
 	}
 	if query.Data == "search" {
-		h.handleClientSearch(ctx, b, message.Chat.ID, 0, "")
+		h.handleClientSearch(ctx, b, message.Chat.ID, "")
 		return
 	}
 	if query.Data == "search_results" {
-		h.handleClientSearch(ctx, b, message.Chat.ID, message.ID, h.search.query)
+		h.handleClientSearch(ctx, b, message.Chat.ID, h.search.query)
 		return
 	}
 	if query.Data == "client_skip" {
@@ -80,7 +88,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	if query.Data == "group_create" {
-		if _, err := h.reply(ctx, b, message.Chat.ID, 0, groupNamePrompt, h.menu); err != nil {
+		if _, err := h.reply(ctx, b, message.Chat.ID, groupNamePrompt, h.menu); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			h.waitingForGroupName.Store(true)
@@ -140,7 +148,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		default:
 			text = name
 			if action == "client" {
-				if _, err := h.reply(ctx, b, message.Chat.ID, 0, clientNamePrompt, h.menu); err != nil {
+				if _, err := h.reply(ctx, b, message.Chat.ID, clientNamePrompt, h.menu); err != nil {
 					log.Printf("Telegram sendMessage failed: %v", err)
 				} else {
 					h.clientDraft = &clientDraft{}
@@ -158,7 +166,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
 	}
-	if _, err := h.reply(ctx, b, message.Chat.ID, message.ID, text, keyboard); err != nil {
+	if _, err := h.reply(ctx, b, message.Chat.ID, text, keyboard); err != nil {
 		log.Printf("Telegram editMessageText failed: %v", err)
 	}
 }
@@ -176,7 +184,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.clientDraft = nil
 		h.search = nil
 	} else if h.search != nil && h.search.messageID == 0 {
-		h.handleClientSearch(ctx, b, message.Chat.ID, 0, message.Text)
+		h.handleClientSearch(ctx, b, message.Chat.ID, message.Text)
 		return
 	} else if h.clientDraft != nil {
 		h.handleClientInput(ctx, b, message.Chat.ID, message.Text, false)
@@ -201,7 +209,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 			}
 		}
 	}
-	_, err := h.reply(ctx, b, message.Chat.ID, 0, text, h.menu)
+	_, err := h.reply(ctx, b, message.Chat.ID, text, h.menu)
 	if err != nil {
 		log.Printf("Telegram sendMessage failed: %v", err)
 	}

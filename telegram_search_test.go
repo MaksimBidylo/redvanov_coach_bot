@@ -17,28 +17,29 @@ func TestTelegramClientSearch(t *testing.T) {
 	}
 	process := telegramTestSession(t, pool)
 	message := &models.Message{ID: 10, From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
-	var resultID, oldID int
+	var resultKeyboard, cardKeyboard, oldResultKeyboard, oldCardKeyboard string
 	for _, tc := range []struct {
 		text, data, want, sql, fragment string
 		old                             bool
 		count                           int
 	}{
 		{"", "search", clientSearchPrompt, "", "", false, 0},
+		{"", "menu", "", "", "", true, 0},
 		{"", "client_skip", "", "", "", false, 0},
 		{" \n ", "", clientSearchPrompt, "", "", false, 0},
-		{"ИВАН", "", "Результаты поиска:", "", `"text":"Иванов Иван (15.03.2010) — Утро","callback_data":"search_view:1"`, false, 2},
-		{"", "search_view:1", "Иванов Иван\nДата рождения: 15.03.2010\nГруппа: Утро", "", `"callback_data":"search_results"`, false, 0},
-		{"", "search_results", "Результаты поиска:", "", `"callback_data":"search_view:2"`, false, 2},
-		{"", "search_view:2", "иванов Пётр\nДата рождения: не указана\nГруппа: без группы", "", `"callback_data":"search_results"`, false, 0},
+		{"ИВАН", "", "Результаты поиска:", "", `"text":"Иванов Иван (15.03.2010) — Утро","callback_data":"search_view:1|`, false, 2},
+		{"", "search_view:1", "Иванов Иван\nДата рождения: 15.03.2010\nГруппа: Утро", "", `"callback_data":"search_results|`, false, 0},
+		{"", "search_results", "Результаты поиска:", "", `"callback_data":"search_view:2|`, false, 2},
+		{"", "search_view:2", "иванов Пётр\nДата рождения: не указана\nГруппа: без группы", "", `"callback_data":"search_results|`, false, 0},
 		{"", "search_results", "Результаты поиска:", "", "иванов Пётр — без группы", false, 2},
 		{"", "menu", "Добро пожаловать!", "", `"callback_data":"search"`, false, 0},
 		{"ИВАН", "", "", "", "", false, 0},
 		{"", "search", clientSearchPrompt, "", "", false, 0},
 		{"", "search_view:1", "", "", "", true, 0},
-		{"%_", "", "Результаты поиска:", "", `"callback_data":"search_view:3"`, false, 1},
+		{"%_", "", "Результаты поиска:", "", `"callback_data":"search_view:3|`, false, 1},
 		{"", "search_results", "", "", "", true, 0},
-		{"", "search_view:3", "100%_Имя\nДата рождения: не указана\nГруппа: без группы", "", `"callback_data":"search_results"`, false, 0},
-		{"", "search_results", "Результаты поиска:", "", `"callback_data":"search_view:3"`, false, 1},
+		{"", "search_view:3", "100%_Имя\nДата рождения: не указана\nГруппа: без группы", "", `"callback_data":"search_results|`, false, 0},
+		{"", "search_results", "Результаты поиска:", "", `"callback_data":"search_view:3|`, false, 1},
 		{"", "search", clientSearchPrompt, "", "", false, 0},
 		{"ЛИМИТ", "", "Результаты поиска:", "", "", false, 20},
 		{"", "search", clientSearchPrompt, "", "", false, 0},
@@ -57,22 +58,31 @@ func TestTelegramClientSearch(t *testing.T) {
 			}
 		}
 		if tc.data == "search" {
-			oldID = resultID
+			oldResultKeyboard, oldCardKeyboard = resultKeyboard, cardKeyboard
 		}
 		message.Text = tc.text
 		update := &models.Update{Message: message}
 		if tc.data != "" {
+			data := tc.data
 			if strings.HasPrefix(tc.data, "search_") {
-				message.ID = resultID
+				keyboards := map[string]string{"search_view": resultKeyboard, "search_results": cardKeyboard}
+				if tc.old {
+					keyboards = map[string]string{"search_view": oldResultKeyboard, "search_results": oldCardKeyboard}
+				}
+				action, _, _ := strings.Cut(tc.data, ":")
+				data = telegramTestCallback(t, keyboards[action], tc.data)
 			}
-			if tc.old {
-				message.ID = oldID
+			update.CallbackQuery = &models.CallbackQuery{ID: "callback", From: *message.From, Data: data, Message: models.MaybeInaccessibleMessage{Message: message}}
+			if tc.old && tc.data == "menu" {
+				update.CallbackQuery.Message.Message = &models.Message{ID: message.ID - 1, Chat: message.Chat}
 			}
-			update.CallbackQuery = &models.CallbackQuery{ID: "callback", From: *message.From, Data: tc.data, Message: models.MaybeInaccessibleMessage{Message: message}}
 		}
-		got, keyboard, replyID := process(update)
-		if tc.data == "" && got == "Результаты поиска:" {
-			resultID = replyID
+		got, keyboard, _ := process(update)
+		if got == "Результаты поиска:" {
+			resultKeyboard = keyboard
+		}
+		if strings.Contains(keyboard, `"callback_data":"search_results|`) {
+			cardKeyboard = keyboard
 		}
 		if got != tc.want || !strings.Contains(keyboard, tc.fragment) {
 			t.Fatalf("query %q, callback %q: got %q, want %q; keyboard=%s", tc.text, tc.data, got, tc.want, keyboard)

@@ -80,7 +80,7 @@ func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, cha
 		if name == "" {
 			text, keyboard = "Имя не должно быть пустым.\n"+clientNamePrompt, h.menu
 		}
-		if messageID, err := h.reply(ctx, b, chatID, 0, text, keyboard); err != nil {
+		if messageID, err := h.reply(ctx, b, chatID, text, keyboard); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			draft.name, draft.promptID = name, messageID
@@ -106,7 +106,7 @@ func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, cha
 			text, keyboard = "Клиент создан.", h.menu
 		}
 	}
-	if messageID, err := h.reply(ctx, b, chatID, 0, text, keyboard); err != nil {
+	if messageID, err := h.reply(ctx, b, chatID, text, keyboard); err != nil {
 		log.Printf("Telegram sendMessage failed: %v", err)
 	} else if h.clientDraft != nil {
 		draft.promptID = messageID
