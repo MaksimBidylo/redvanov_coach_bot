@@ -35,7 +35,7 @@ func TestGroupPaymentStorage(t *testing.T) {
 		{"not a month", 1, 1, 3000, received, false},
 	} {
 		payment := groupPayment{ClientID: tc.clientID, GroupID: tc.groupID, AmountRub: tc.amount, ReceivedOn: received, TrainingMonth: tc.month}
-		if err := createGroupPayment(t.Context(), pool, payment); (err == nil) != tc.valid {
+		if err := createGroupPayment(t.Context(), pool, payment, tc.name); (err == nil) != tc.valid {
 			t.Fatalf("%s: valid=%v, error=%v", tc.name, tc.valid, err)
 		}
 		if tc.valid {
@@ -50,6 +50,9 @@ func TestGroupPaymentStorage(t *testing.T) {
 	}
 	if err := closeGroup(t.Context(), pool, 1, 2, true); err != nil {
 		t.Fatal(err)
+	}
+	if err := createGroupPayment(t.Context(), pool, want[0], "first"); err != nil {
+		t.Fatalf("retry after transfer and archiving: %v", err)
 	}
 	rows, err := pool.Query(t.Context(), "SELECT client_id, group_id, amount_rub, received_on, training_month FROM group_payments ORDER BY id")
 	if err != nil {
