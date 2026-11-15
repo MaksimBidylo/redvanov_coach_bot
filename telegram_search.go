@@ -17,7 +17,7 @@ type clientSearch struct {
 	messageID int
 }
 
-func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, chatID int64, messageID int, query string) {
+func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, chatID int64, query string) {
 	query = strings.TrimSpace(query)
 	text, keyboard := clientSearchPrompt, models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "Назад", CallbackData: "menu"}},
@@ -49,7 +49,7 @@ func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, ch
 			keyboard = models.InlineKeyboardMarkup{InlineKeyboard: append(buttons, []models.InlineKeyboardButton{{Text: "Назад", CallbackData: "menu"}})}
 		}
 	}
-	messageID, err := h.reply(ctx, b, chatID, messageID, text, keyboard)
+	messageID, err := h.reply(ctx, b, chatID, text, keyboard)
 	if err != nil {
 		log.Printf("Telegram search reply failed: %v", err)
 		return

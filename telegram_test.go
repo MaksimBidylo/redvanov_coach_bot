@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,7 +27,8 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 func TestTelegramHandler(t *testing.T) {
 	var sends int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/bottest-token/sendMessage" {
+		method := map[int]string{0: "sendMessage", 1: "editMessageText", 2: "editMessageText", 3: "sendMessage"}[sends]
+		if r.URL.Path != "/bottest-token/"+method {
 			t.Errorf("unexpected request: %s", r.URL.Path)
 		}
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -34,11 +37,17 @@ func TestTelegramHandler(t *testing.T) {
 		if r.FormValue("chat_id") != "7" || r.FormValue("text") != "Добро пожаловать!" {
 			t.Errorf("unexpected message: %v", r.Form)
 		}
+		if method == "editMessageText" && r.FormValue("message_id") != "1" {
+			t.Errorf("must edit the original message: %v", r.Form)
+		}
 		if !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"groups"`) || !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"ungrouped"`) || !strings.Contains(r.FormValue("reply_markup"), `"callback_data":"search"`) {
 			t.Error("main menu must include groups, ungrouped clients and search buttons")
 		}
 		sends++
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{}}`))}, nil
+		if description := map[int]string{2: "message is not modified", 3: "message to edit not found"}[sends]; description != "" {
+			return &http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(strings.NewReader(`{"ok":false,"error_code":400,"description":"` + description + `"}`))}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":` + strconv.Itoa(sends) + `}}`))}, nil
 	})}
 	b, err := newTelegramBot("7", "test-token", nil, bot.WithHTTPClient(time.Second, client))
 	if err != nil {
@@ -56,19 +65,19 @@ func TestTelegramHandler(t *testing.T) {
 		want    int
 	}{
 		{"owner start", message(7, models.ChatTypePrivate, "/start"), 1},
+		{"same screen", message(7, models.ChatTypePrivate, "/start"), 1},
+		{"deleted screen", message(7, models.ChatTypePrivate, "/start"), 2},
 		{"other user", message(8, models.ChatTypePrivate, "/start"), 0},
 		{"group", message(7, models.ChatTypeGroup, "/start"), 0},
 		{"other command", message(7, models.ChatTypePrivate, "/help"), 0},
 		{"no message", nil, 0},
 		{"no sender", &models.Message{Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}, Text: "/start"}, 0},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			before := sends
-			b.ProcessUpdate(context.Background(), &models.Update{Message: tc.message})
-			if got := sends - before; got != tc.want {
-				t.Fatalf("sent %d messages, want %d", got, tc.want)
-			}
-		})
+		before := sends
+		b.ProcessUpdate(context.Background(), &models.Update{Message: tc.message})
+		if got := sends - before; got != tc.want {
+			t.Fatalf("%s: sent %d messages, want %d", tc.name, got, tc.want)
+		}
 	}
 }
 
@@ -149,6 +158,9 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 			got, keyboard = r.FormValue("text"), r.FormValue("reply_markup")
 			if r.FormValue("message_id") == "" {
 				messageID++
+				if messageID > 1 {
+					t.Fatal("bot must reuse its existing message")
+				}
 				replyID = messageID
 			} else {
 				var err error
@@ -284,6 +296,7 @@ func TestTelegramGroupCreation(t *testing.T) {
 			}
 		}
 		message := &models.Message{
+			ID:   10,
 			From: &models.User{ID: tc.owner}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate},
 			Text: tc.text,
 		}
@@ -313,4 +326,19 @@ func TestTelegramGroupCreation(t *testing.T) {
 	if err != nil || len(groups) != 3 || groups[0].Name != "Взрослая утро" || groups[1].Name != "Выходные" || groups[2].Name != "Детская" {
 		t.Fatalf("saved groups = %v, error = %v", groups, err)
 	}
+}
+
+func telegramTestCallback(t *testing.T, keyboard, data string) string {
+	t.Helper()
+	var markup models.InlineKeyboardMarkup
+	if err := json.Unmarshal([]byte(keyboard), &markup); err != nil {
+		t.Fatal(err)
+	}
+	for _, button := range slices.Concat(markup.InlineKeyboard...) {
+		if base, _, _ := strings.Cut(button.CallbackData, "|"); base == data {
+			return button.CallbackData
+		}
+	}
+	t.Fatalf("missing %q button in %s", data, keyboard)
+	return ""
 }

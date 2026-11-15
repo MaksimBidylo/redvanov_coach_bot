@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -27,6 +28,7 @@ func newTelegramBot(owner, token string, pool *pgxpool.Pool, options ...bot.Opti
 			{{Text: "Найти клиента", CallbackData: "search"}},
 		}},
 	}
+	h.revision = time.Now().UnixNano()
 
 	opts := []bot.Option{
 		bot.WithDefaultHandler(h.handle),
