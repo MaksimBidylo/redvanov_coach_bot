@@ -25,14 +25,21 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestTelegramHandler(t *testing.T) {
-	var sends int
+	var sends, deletes int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Error(err)
+		}
+		if r.URL.Path == "/bottest-token/deleteMessage" {
+			if r.FormValue("chat_id") != "7" || r.FormValue("message_id") != "100" {
+				t.Errorf("must delete the user input: %v", r.Form)
+			}
+			deletes++
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":true}`))}, nil
+		}
 		method := map[int]string{0: "sendMessage", 1: "editMessageText", 2: "editMessageText", 3: "sendMessage"}[sends]
 		if r.URL.Path != "/bottest-token/"+method {
 			t.Errorf("unexpected request: %s", r.URL.Path)
-		}
-		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Error(err)
 		}
 		if r.FormValue("chat_id") != "7" || r.FormValue("text") != "Добро пожаловать!" {
 			t.Errorf("unexpected message: %v", r.Form)
@@ -57,26 +64,29 @@ func TestTelegramHandler(t *testing.T) {
 		t.Fatal("initialization must not contact Telegram")
 	}
 	message := func(owner int64, chat models.ChatType, text string) *models.Message {
-		return &models.Message{From: &models.User{ID: owner}, Chat: models.Chat{ID: 7, Type: chat}, Text: text}
+		return &models.Message{ID: 100, From: &models.User{ID: owner}, Chat: models.Chat{ID: 7, Type: chat}, Text: text}
 	}
 	for _, tc := range []struct {
-		name    string
-		message *models.Message
-		want    int
+		name             string
+		message          *models.Message
+		want, wantDelete int
 	}{
-		{"owner start", message(7, models.ChatTypePrivate, "/start"), 1},
-		{"same screen", message(7, models.ChatTypePrivate, "/start"), 1},
-		{"deleted screen", message(7, models.ChatTypePrivate, "/start"), 2},
-		{"other user", message(8, models.ChatTypePrivate, "/start"), 0},
-		{"group", message(7, models.ChatTypeGroup, "/start"), 0},
-		{"other command", message(7, models.ChatTypePrivate, "/help"), 0},
-		{"no message", nil, 0},
-		{"no sender", &models.Message{Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}, Text: "/start"}, 0},
+		{"owner start", message(7, models.ChatTypePrivate, "/start"), 1, 1},
+		{"same screen", message(7, models.ChatTypePrivate, "/start"), 1, 1},
+		{"deleted screen", message(7, models.ChatTypePrivate, "/start"), 2, 1},
+		{"other user", message(8, models.ChatTypePrivate, "/start"), 0, 0},
+		{"group", message(7, models.ChatTypeGroup, "/start"), 0, 0},
+		{"other command", message(7, models.ChatTypePrivate, "/help"), 0, 1},
+		{"no message", nil, 0, 0},
+		{"no sender", &models.Message{Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}, Text: "/start"}, 0, 0},
 	} {
-		before := sends
+		before, deletesBefore := sends, deletes
 		b.ProcessUpdate(context.Background(), &models.Update{Message: tc.message})
 		if got := sends - before; got != tc.want {
 			t.Fatalf("%s: sent %d messages, want %d", tc.name, got, tc.want)
+		}
+		if got := deletes - deletesBefore; got != tc.wantDelete {
+			t.Fatalf("%s: deleted %d messages, want %d", tc.name, got, tc.wantDelete)
 		}
 	}
 }
@@ -149,12 +159,16 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 	var messageID, replyID int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		result := `true`
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Error(err)
+		}
 		switch r.URL.Path {
 		case "/bot123:test-token/answerCallbackQuery":
-		case "/bot123:test-token/editMessageText", "/bot123:test-token/sendMessage":
-			if err := r.ParseMultipartForm(1 << 20); err != nil {
-				t.Error(err)
+		case "/bot123:test-token/deleteMessage":
+			if r.FormValue("chat_id") != "7" || r.FormValue("message_id") != "100" {
+				t.Errorf("must delete only user input: %v", r.Form)
 			}
+		case "/bot123:test-token/editMessageText", "/bot123:test-token/sendMessage":
 			got, keyboard = r.FormValue("text"), r.FormValue("reply_markup")
 			if r.FormValue("message_id") == "" {
 				messageID++
@@ -296,12 +310,13 @@ func TestTelegramGroupCreation(t *testing.T) {
 			}
 		}
 		message := &models.Message{
-			ID:   10,
+			ID:   100,
 			From: &models.User{ID: tc.owner}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate},
 			Text: tc.text,
 		}
 		update := &models.Update{Message: message}
 		if tc.data != "" {
+			message.ID = 10
 			update = &models.Update{CallbackQuery: &models.CallbackQuery{
 				ID: "callback", From: *message.From, Data: tc.data,
 				Message: models.MaybeInaccessibleMessage{Message: message},
