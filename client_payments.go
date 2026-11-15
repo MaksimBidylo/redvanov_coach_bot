@@ -29,3 +29,14 @@ func listClientPayments(ctx context.Context, pool *pgxpool.Pool, clientID, page 
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[clientPayment])
 }
+
+func deleteClientPayment(ctx context.Context, pool *pgxpool.Pool, clientID, paymentID int64, personal bool) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	table := "group_payments"
+	if personal {
+		table = "personal_payments"
+	}
+	_, err := pool.Exec(ctx, "DELETE FROM "+table+" WHERE id = $1 AND client_id = $2", paymentID, clientID)
+	return err
+}
