@@ -87,7 +87,7 @@ func TestTelegramClientCard(t *testing.T) {
 	}{
 		{"dated", "client_view:1", "Иванов Иван\nДата рождения: 15.03.2010\nГруппа: Вечер", "group:2", ""},
 		{"undated", "client_view:2", "Иванов Иван\nДата рождения: не указана\nГруппа: Вечер", "group:2", ""},
-		{"without group", "client_view:3", "Персональный\nДата рождения: не указана\nГруппа: без группы", "groups", ""},
+		{"without group", "client_view:3", "Персональный\nДата рождения: не указана\nГруппа: без группы", "ungrouped", ""},
 		{"missing", "client_view:999", "Клиент не найден.", "groups", ""},
 		{"database error", "client_view:1", "Не удалось загрузить клиента. Попробуйте ещё раз.", "groups", "ALTER TABLE clients RENAME TO broken"},
 	} {
@@ -113,5 +113,67 @@ func TestTelegramClientCard(t *testing.T) {
 				t.Fatalf("missing back to %q in %s", tc.back, keyboard)
 			}
 		})
+	}
+}
+
+func TestTelegramUngroupedClients(t *testing.T) {
+	pool := telegramTestDatabase(t)
+	if _, err := pool.Exec(t.Context(), `INSERT INTO groups (name) VALUES ('Утро');
+		INSERT INTO clients (name, group_id) VALUES ('Групповой', 1), ('Персональный', NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	process := telegramTestSession(t, pool)
+	message := &models.Message{ID: 10, From: &models.User{ID: 7}, Chat: models.Chat{ID: 7, Type: models.ChatTypePrivate}}
+	var promptID int
+	for _, tc := range []struct {
+		text, data, want, sql, button string
+	}{
+		{"", "ungrouped", "Клиенты без группы\n\nКлиенты:", "", "client:0"},
+		{"", "client_view:2", "Персональный\nДата рождения: не указана\nГруппа: без группы", "", "ungrouped"},
+		{"", "client:0", clientNamePrompt, "", ""},
+		{"", "client:-1", "", "", ""},
+		{"Новый", "", clientBirthDatePrompt, "", "client_skip"},
+		{"15.03.2010", "", "Не удалось сохранить клиента.\n" + clientBirthDatePrompt, "ALTER TABLE clients RENAME COLUMN name TO broken", "client_skip"},
+		{"", "client_skip", "Клиент создан.", "ALTER TABLE clients RENAME COLUMN broken TO name", ""},
+		{"", "client_skip", "", "", ""},
+		{"", "ungrouped", "Клиенты без группы\n\nКлиенты:", "", "client_view:3"},
+		{"", "client_view:3", "Новый\nДата рождения: не указана\nГруппа: без группы", "", "ungrouped"},
+		{"", "client:0", clientNamePrompt, "", ""},
+		{"Лишний", "", clientBirthDatePrompt, "", "client_skip"},
+		{"/start", "", "Добро пожаловать!", "", ""},
+		{"15.03.2010", "", "", "", ""},
+		{"", "client_skip", "", "", ""},
+	} {
+		if tc.sql != "" {
+			if _, err := pool.Exec(t.Context(), tc.sql); err != nil {
+				t.Fatal(err)
+			}
+		}
+		message.Text = tc.text
+		update := &models.Update{Message: message}
+		if tc.data != "" {
+			if tc.data == "client_skip" {
+				message.ID = promptID
+			}
+			update.CallbackQuery = &models.CallbackQuery{
+				ID: "callback", From: *message.From, Data: tc.data,
+				Message: models.MaybeInaccessibleMessage{Message: message},
+			}
+		}
+		got, keyboard, replyID := process(update)
+		if strings.Contains(keyboard, `"callback_data":"client_skip"`) {
+			promptID = replyID
+		}
+		if got != tc.want {
+			t.Fatalf("text %q, callback %q: got %q, want %q", tc.text, tc.data, got, tc.want)
+		}
+		if tc.button != "" && !strings.Contains(keyboard, `"callback_data":"`+tc.button+`"`) {
+			t.Fatalf("missing %q button in %s", tc.button, keyboard)
+		}
+	}
+	var total, created int
+	err := pool.QueryRow(t.Context(), "SELECT count(*), count(*) FILTER (WHERE name = 'Новый' AND group_id IS NULL AND birth_date IS NULL) FROM clients").Scan(&total, &created)
+	if err != nil || total != 3 || created != 1 {
+		t.Fatalf("clients: total=%d, created=%d, error=%v", total, created, err)
 	}
 }

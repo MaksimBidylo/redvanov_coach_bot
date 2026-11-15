@@ -23,6 +23,7 @@ func newTelegramBot(owner, token string, pool *pgxpool.Pool, options ...bot.Opti
 		pool:    pool,
 		menu: models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 			{{Text: "Группы", CallbackData: "groups"}},
+			{{Text: "Клиенты без группы", CallbackData: "ungrouped"}},
 		}},
 	}
 
