@@ -23,6 +23,8 @@ type telegramHandler struct {
 	waitingForGroupName atomic.Bool
 	clientDraft         *clientDraft
 	renameGroupID       int64
+	editClientID        int64
+	editBirthDate       bool
 	search              *clientSearch
 	messageID           int
 	revision            int64
@@ -42,7 +44,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	data, revision, versioned := strings.Cut(query.Data, "|")
-	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:")) && revision != strconv.FormatInt(h.revision, 10) {
+	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_")) && revision != strconv.FormatInt(h.revision, 10) {
 		return
 	}
 	query.Data = data
@@ -60,7 +62,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
@@ -77,7 +79,8 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	}
 	h.messageID = message.ID
 	h.renameGroupID = 0
-	if action != "search_view" && action != "move" && query.Data != "search_results" {
+	h.editClientID = 0
+	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && query.Data != "search_results" {
 		h.search = nil
 	}
 	if query.Data != "client_skip" {
@@ -107,6 +110,10 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		} else {
 			h.waitingForGroupName.Store(true)
 		}
+		return
+	}
+	if strings.HasPrefix(action, "edit_") {
+		h.handleClientEdit(ctx, b, message.Chat.ID, id, action, "")
 		return
 	}
 	text, keyboard := "Добро пожаловать!", h.menu
@@ -214,8 +221,12 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.clientDraft = nil
 		h.search = nil
 		h.renameGroupID = 0
+		h.editClientID = 0
 	} else if h.renameGroupID != 0 {
 		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)
+		return
+	} else if h.editClientID != 0 {
+		h.handleClientEdit(ctx, b, message.Chat.ID, h.editClientID, "input", message.Text)
 		return
 	} else if h.search != nil && h.search.messageID == 0 {
 		h.handleClientSearch(ctx, b, message.Chat.ID, message.Text)
