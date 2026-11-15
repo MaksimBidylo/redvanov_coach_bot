@@ -44,17 +44,17 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	data, revision, versioned := strings.Cut(query.Data, "|")
-	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_")) && revision != strconv.FormatInt(h.revision, 10) {
+	if (versioned || data == "client_skip" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del")) && revision != strconv.FormatInt(h.revision, 10) {
 		return
 	}
 	query.Data = data
 	var id, groupID int64
 	action, after, hasID := strings.Cut(query.Data, ":")
-	var saveMove bool
-	if action == "move" {
+	var hasTarget bool
+	if action == "move" || action == "del" || action == "delc" {
 		var target string
-		after, target, saveMove = strings.Cut(after, ":")
-		if saveMove {
+		after, target, hasTarget = strings.Cut(after, ":")
+		if hasTarget {
 			var err error
 			groupID, err = strconv.ParseInt(target, 10, 64)
 			if err != nil || groupID < 0 {
@@ -62,13 +62,19 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client") {
 			return
 		}
 		id = parsedID
 	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" {
+		return
+	}
+	if action == "delc" && !hasTarget {
+		return
+	}
+	if (action == "del" || action == "delc") && hasTarget && groupID == id {
 		return
 	}
 	if (action == "search_view" || query.Data == "search_results") && (h.search == nil || h.search.messageID == 0) {
@@ -117,8 +123,10 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	text, keyboard := "Добро пожаловать!", h.menu
-	if action == "move" {
-		text, keyboard = h.changeClientGroup(ctx, id, groupID, saveMove)
+	if action == "del" || action == "delc" {
+		text, keyboard = h.deleteGroupMenu(ctx, id, groupID, hasTarget, action == "delc")
+	} else if action == "move" {
+		text, keyboard = h.changeClientGroup(ctx, id, groupID, hasTarget)
 	} else if action == "client_view" || action == "search_view" {
 		text, keyboard = h.clientCard(ctx, id)
 	} else if query.Data == "ungrouped" {
@@ -190,7 +198,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			text, keyboard = h.groupCard(ctx, id, name)
 		}
 	}
-	if h.search != nil && (action == "search_view" || (action == "move" && saveMove)) {
+	if h.search != nil && (action == "search_view" || (action == "move" && hasTarget)) {
 		keyboard.InlineKeyboard[len(keyboard.InlineKeyboard)-1][0].CallbackData = "search_results"
 	}
 	if _, err := h.reply(ctx, b, message.Chat.ID, text, keyboard); err != nil {
