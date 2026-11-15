@@ -66,16 +66,27 @@ func createClient(ctx context.Context, pool *pgxpool.Pool, name string, birthDat
 }
 
 type client struct {
+	ID        int64
 	Name      string
 	BirthDate *time.Time
+	GroupID   *int64
+	GroupName *string
 }
 
 func listGroupClients(ctx context.Context, pool *pgxpool.Pool, groupID int64) ([]client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := pool.Query(ctx, "SELECT name, birth_date FROM clients WHERE group_id = $1 ORDER BY name, id", groupID)
+	rows, err := pool.Query(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.group_id = $1 ORDER BY c.name, c.id", groupID)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[client])
+}
+
+func getClient(ctx context.Context, pool *pgxpool.Pool, id int64) (client, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var c client
+	err := pool.QueryRow(ctx, "SELECT c.id, c.name, c.birth_date, c.group_id, g.name FROM clients c LEFT JOIN groups g ON g.id = c.group_id WHERE c.id = $1", id).Scan(&c.ID, &c.Name, &c.BirthDate, &c.GroupID, &c.GroupName)
+	return c, err
 }

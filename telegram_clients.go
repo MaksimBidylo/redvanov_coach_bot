@@ -2,34 +2,63 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/jackc/pgx/v5"
 )
 
 const clientNamePrompt = "Введите имя клиента. Для отмены — /start."
 const clientBirthDatePrompt = "Введите дату рождения (ДД.ММ.ГГГГ) или нажмите «Пропустить». Для отмены — /start."
 
-func (h *telegramHandler) groupClientsText(ctx context.Context, groupID int64) string {
+func (h *telegramHandler) groupClientsMenu(ctx context.Context, groupID int64) (string, [][]models.InlineKeyboardButton) {
 	clients, err := listGroupClients(ctx, h.pool, groupID)
 	if err != nil {
 		log.Printf("Load group clients failed: %v", err)
-		return "Не удалось загрузить клиентов. Попробуйте ещё раз."
+		return "Не удалось загрузить клиентов. Попробуйте ещё раз.", nil
 	}
 	if len(clients) == 0 {
-		return "Клиентов пока нет."
+		return "Клиентов пока нет.", nil
 	}
-	lines := make([]string, len(clients))
+	buttons := make([][]models.InlineKeyboardButton, len(clients))
 	for i, client := range clients {
-		lines[i] = client.Name
+		label := client.Name
 		if client.BirthDate != nil {
-			lines[i] += " (" + client.BirthDate.Format("02.01.2006") + ")"
+			label += " (" + client.BirthDate.Format("02.01.2006") + ")"
 		}
+		buttons[i] = []models.InlineKeyboardButton{{Text: label, CallbackData: "client_view:" + strconv.FormatInt(client.ID, 10)}}
 	}
-	return "Клиенты:\n" + strings.Join(lines, "\n")
+	return "Клиенты:", buttons
+}
+
+func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, models.InlineKeyboardMarkup) {
+	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: "Назад", CallbackData: "groups"}},
+	}}
+	c, err := getClient(ctx, h.pool, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "Клиент не найден.", keyboard
+	}
+	if err != nil {
+		log.Printf("Load client failed: %v", err)
+		return "Не удалось загрузить клиента. Попробуйте ещё раз.", keyboard
+	}
+	if c.GroupID != nil {
+		keyboard.InlineKeyboard[0][0].CallbackData = "group:" + strconv.FormatInt(*c.GroupID, 10)
+	}
+	birthDate, groupName := "не указана", "без группы"
+	if c.BirthDate != nil {
+		birthDate = c.BirthDate.Format("02.01.2006")
+	}
+	if c.GroupName != nil {
+		groupName = *c.GroupName
+	}
+	return c.Name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
 }
 
 func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value string, skip bool) {

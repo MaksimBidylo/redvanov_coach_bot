@@ -39,14 +39,14 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	if query.From.ID != h.ownerID || message == nil || message.Chat.Type != models.ChatTypePrivate {
 		return
 	}
-	var groupID int64
+	var id int64
 	action, after, hasID := strings.Cut(query.Data, ":")
-	if hasID && (action == "group" || action == "client") {
-		id, err := strconv.ParseInt(after, 10, 64)
-		if err != nil || id <= 0 {
+	if hasID && (action == "group" || action == "client" || action == "client_view") {
+		parsedID, err := strconv.ParseInt(after, 10, 64)
+		if err != nil || parsedID <= 0 {
 			return
 		}
-		groupID = id
+		id = parsedID
 	} else if query.Data != "groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" {
 		return
 	}
@@ -77,7 +77,9 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	text, keyboard := "Добро пожаловать!", h.menu
-	if query.Data == "groups" {
+	if action == "client_view" {
+		text, keyboard = h.clientCard(ctx, id)
+	} else if query.Data == "groups" {
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 			{{Text: "Добавить группу", CallbackData: "group_create"}},
 			{{Text: "Назад", CallbackData: "menu"}},
@@ -99,11 +101,11 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
-	} else if groupID > 0 {
+	} else if id > 0 {
 		keyboard = models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 			{{Text: "Назад", CallbackData: "groups"}},
 		}}
-		name, err := getGroupName(ctx, h.pool, groupID)
+		name, err := getGroupName(ctx, h.pool, id)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			text = "Группа не найдена."
@@ -116,14 +118,16 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 				if _, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: message.Chat.ID, Text: clientNamePrompt, ReplyMarkup: h.menu}); err != nil {
 					log.Printf("Telegram sendMessage failed: %v", err)
 				} else {
-					h.clientGroupID = groupID
+					h.clientGroupID = id
 				}
 				return
 			}
 			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
-				{{Text: "Добавить клиента", CallbackData: "client:" + strconv.FormatInt(groupID, 10)}},
+				{{Text: "Добавить клиента", CallbackData: "client:" + strconv.FormatInt(id, 10)}},
 			}, keyboard.InlineKeyboard...)
-			text += "\n\n" + h.groupClientsText(ctx, groupID)
+			body, buttons := h.groupClientsMenu(ctx, id)
+			text += "\n\n" + body
+			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
 	}
 	if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
