@@ -84,9 +84,7 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 		{{Text: "🔄 Сменить группу", CallbackData: "move:" + strconv.FormatInt(c.ID, 10)}},
 		{{Text: archiveText, CallbackData: archiveAction + strconv.FormatInt(c.ID, 10)}},
 	}, keyboard.InlineKeyboard...)
-	if c.GroupID != nil {
-		keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: "💰 Записать оплату", CallbackData: "payment:" + strconv.FormatInt(c.ID, 10)}}}, keyboard.InlineKeyboard...)
-	}
+	keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: "💰 Записать оплату", CallbackData: "payment:" + strconv.FormatInt(c.ID, 10)}}}, keyboard.InlineKeyboard...)
 	return name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
 }
 

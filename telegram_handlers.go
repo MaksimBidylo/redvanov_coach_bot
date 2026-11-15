@@ -69,7 +69,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" {
+	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" {
 		return
 	}
 	if (action == "delc" || action == "garc") && !hasTarget {
@@ -87,7 +87,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	h.messageID = message.ID
 	h.renameGroupID = 0
 	h.editClientID = 0
-	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && !strings.HasPrefix(action, "payment") && action != "archive" && action != "restore" && query.Data != "search_results" && (h.paymentDraft == nil || !h.paymentDraft.pending) {
+	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && !strings.HasPrefix(action, "payment") && action != "archive" && action != "restore" && query.Data != "search_results" && (h.paymentDraft == nil || (!h.paymentDraft.pending && !h.paymentDraft.saved)) {
 		h.search = nil
 	}
 	previousClientDraft := h.clientDraft
@@ -100,7 +100,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	if _, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
 		log.Printf("Telegram answerCallbackQuery failed: %v", err)
 	}
-	if strings.HasPrefix(action, "payment") || (h.paymentDraft != nil && h.paymentDraft.pending) {
+	if strings.HasPrefix(action, "payment") || (h.paymentDraft != nil && (h.paymentDraft.pending || h.paymentDraft.saved)) {
 		h.handlePayment(ctx, b, message.Chat.ID, id, action, "")
 		return
 	}
@@ -259,7 +259,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 			log.Printf("Telegram deleteMessage failed: %v", err)
 		}
 	}()
-	if message.Text == "/start" && h.paymentDraft != nil && h.paymentDraft.pending {
+	if message.Text == "/start" && h.paymentDraft != nil && (h.paymentDraft.pending || h.paymentDraft.saved) {
 		h.handlePayment(ctx, b, message.Chat.ID, 0, "input", message.Text)
 		return
 	}
@@ -277,7 +277,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		return
 	}
 	if h.paymentDraft != nil {
-		replyExpected = h.paymentDraft.step != 4 || h.paymentDraft.saved
+		replyExpected = h.paymentDraft.saved || (h.paymentDraft.step > 0 && h.paymentDraft.step < 4)
 		h.handlePayment(ctx, b, message.Chat.ID, 0, "input", message.Text)
 		return
 	} else if h.renameGroupID != 0 {
