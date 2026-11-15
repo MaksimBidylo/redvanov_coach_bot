@@ -13,6 +13,25 @@ import (
 const clientNamePrompt = "Введите имя клиента. Для отмены — /start."
 const clientBirthDatePrompt = "Введите дату рождения (ДД.ММ.ГГГГ) или нажмите «Пропустить». Для отмены — /start."
 
+func (h *telegramHandler) groupClientsText(ctx context.Context, groupID int64) string {
+	clients, err := listGroupClients(ctx, h.pool, groupID)
+	if err != nil {
+		log.Printf("Load group clients failed: %v", err)
+		return "Не удалось загрузить клиентов. Попробуйте ещё раз."
+	}
+	if len(clients) == 0 {
+		return "Клиентов пока нет."
+	}
+	lines := make([]string, len(clients))
+	for i, client := range clients {
+		lines[i] = client.Name
+		if client.BirthDate != nil {
+			lines[i] += " (" + client.BirthDate.Format("02.01.2006") + ")"
+		}
+	}
+	return "Клиенты:\n" + strings.Join(lines, "\n")
+}
+
 func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value string, skip bool) {
 	keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "Пропустить", CallbackData: "client_skip"}},
