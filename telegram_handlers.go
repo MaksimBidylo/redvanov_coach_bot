@@ -80,9 +80,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	if query.Data == "group_create" {
-		if _, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: message.Chat.ID, Text: groupNamePrompt, ReplyMarkup: h.menu,
-		}); err != nil {
+		if _, err := h.reply(ctx, b, message.Chat.ID, 0, groupNamePrompt, h.menu); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			h.waitingForGroupName.Store(true)
@@ -142,7 +140,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		default:
 			text = name
 			if action == "client" {
-				if _, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: message.Chat.ID, Text: clientNamePrompt, ReplyMarkup: h.menu}); err != nil {
+				if _, err := h.reply(ctx, b, message.Chat.ID, 0, clientNamePrompt, h.menu); err != nil {
 					log.Printf("Telegram sendMessage failed: %v", err)
 				} else {
 					h.clientDraft = &clientDraft{}
@@ -160,9 +158,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
 		}
 	}
-	if _, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-		ChatID: message.Chat.ID, MessageID: message.ID, Text: text, ReplyMarkup: keyboard,
-	}); err != nil {
+	if _, err := h.reply(ctx, b, message.Chat.ID, message.ID, text, keyboard); err != nil {
 		log.Printf("Telegram editMessageText failed: %v", err)
 	}
 }
@@ -205,9 +201,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 			}
 		}
 	}
-	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: message.Chat.ID, Text: text, ReplyMarkup: h.menu,
-	})
+	_, err := h.reply(ctx, b, message.Chat.ID, 0, text, h.menu)
 	if err != nil {
 		log.Printf("Telegram sendMessage failed: %v", err)
 	}

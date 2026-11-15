@@ -137,7 +137,7 @@ func telegramTestDatabase(t *testing.T) *pgxpool.Pool {
 func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) (string, string, int) {
 	t.Helper()
 	var got, keyboard string
-	var messageID int
+	var messageID, replyID int
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		result := `true`
 		switch r.URL.Path {
@@ -147,8 +147,17 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 				t.Error(err)
 			}
 			got, keyboard = r.FormValue("text"), r.FormValue("reply_markup")
-			messageID++
-			result = `{"message_id":` + strconv.Itoa(messageID) + `}`
+			if r.FormValue("message_id") == "" {
+				messageID++
+				replyID = messageID
+			} else {
+				var err error
+				replyID, err = strconv.Atoi(r.FormValue("message_id"))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			result = `{"message_id":` + strconv.Itoa(replyID) + `}`
 		default:
 			t.Errorf("unexpected request: %s", r.URL.Path)
 		}
@@ -161,7 +170,7 @@ func telegramTestSession(t *testing.T, pool *pgxpool.Pool) func(*models.Update) 
 	return func(update *models.Update) (string, string, int) {
 		got, keyboard = "", ""
 		b.ProcessUpdate(t.Context(), update)
-		return got, keyboard, messageID
+		return got, keyboard, replyID
 	}
 }
 

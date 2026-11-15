@@ -49,16 +49,7 @@ func (h *telegramHandler) handleClientSearch(ctx context.Context, b *bot.Bot, ch
 			keyboard = models.InlineKeyboardMarkup{InlineKeyboard: append(buttons, []models.InlineKeyboardButton{{Text: "Назад", CallbackData: "menu"}})}
 		}
 	}
-	var err error
-	if messageID == 0 {
-		var sent *models.Message
-		sent, err = b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text, ReplyMarkup: keyboard})
-		if err == nil {
-			messageID = sent.ID
-		}
-	} else {
-		_, err = b.EditMessageText(ctx, &bot.EditMessageTextParams{ChatID: chatID, MessageID: messageID, Text: text, ReplyMarkup: keyboard})
-	}
+	messageID, err := h.reply(ctx, b, chatID, messageID, text, keyboard)
 	if err != nil {
 		log.Printf("Telegram search reply failed: %v", err)
 		return
