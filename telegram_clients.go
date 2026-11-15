@@ -23,7 +23,7 @@ type clientDraft struct {
 }
 
 func (h *telegramHandler) groupClientsMenu(ctx context.Context, groupID *int64) (string, [][]models.InlineKeyboardButton) {
-	clients, err := listGroupClients(ctx, h.pool, groupID)
+	clients, err := listGroupClients(ctx, h.pool, groupID, false)
 	if err != nil {
 		log.Printf("Load group clients failed: %v", err)
 		return "Не удалось загрузить клиентов. Попробуйте ещё раз.", nil
@@ -66,12 +66,28 @@ func (h *telegramHandler) clientCard(ctx context.Context, id int64) (string, mod
 	if c.GroupName != nil {
 		groupName = *c.GroupName
 	}
+	name, archiveText, archiveAction := c.Name, "В архив", "archive:"
+	if c.Archived {
+		name += " (арх)"
+		archiveText, archiveAction = "Восстановить", "restore:"
+	}
 	keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{
 		{{Text: "Изменить имя", CallbackData: "edit_name:" + strconv.FormatInt(c.ID, 10)}},
 		{{Text: "Изменить дату рождения", CallbackData: "edit_birth:" + strconv.FormatInt(c.ID, 10)}},
 		{{Text: "Сменить группу", CallbackData: "move:" + strconv.FormatInt(c.ID, 10)}},
+		{{Text: archiveText, CallbackData: archiveAction + strconv.FormatInt(c.ID, 10)}},
 	}, keyboard.InlineKeyboard...)
-	return c.Name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
+	return name + "\nДата рождения: " + birthDate + "\nГруппа: " + groupName, keyboard
+}
+
+func (h *telegramHandler) changeClientArchive(ctx context.Context, id int64, archived bool) (string, models.InlineKeyboardMarkup) {
+	err := setClientArchived(ctx, h.pool, id, archived)
+	text, keyboard := h.clientCard(ctx, id)
+	if err != nil {
+		log.Printf("Change client archive failed: %v", err)
+		text = "Не удалось изменить статус клиента. Попробуйте ещё раз.\n\n" + text
+	}
+	return text, keyboard
 }
 
 func (h *telegramHandler) handleClientInput(ctx context.Context, b *bot.Bot, chatID int64, value string, skip bool) {
