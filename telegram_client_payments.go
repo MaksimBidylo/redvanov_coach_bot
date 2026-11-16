@@ -15,6 +15,14 @@ type clientPaymentHistory struct {
 	payments       []clientPayment
 }
 
+func (p clientPayment) details() string {
+	text := fmt.Sprintf("Персональная оплата\nСумма: %d ₽\nДата получения денег: %s", p.AmountRub, p.ReceivedOn.Format("02.01.2006"))
+	if !p.Personal {
+		text = fmt.Sprintf("Групповая оплата\nСумма: %d ₽\nДата получения денег: %s\nГруппа: %s\nМесяц занятий: %s", p.AmountRub, p.ReceivedOn.Format("02.01.2006"), *p.GroupName, p.TrainingMonth.Format("01.2006"))
+	}
+	return text
+}
+
 func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, chatID int64, action string, id int64) {
 	history := h.paymentHistory
 	if action == "ledger" {
@@ -52,10 +60,7 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 			return
 		}
 		payment := history.payments[id]
-		text = fmt.Sprintf("Персональная оплата\nСумма: %d ₽\nДата получения денег: %s", payment.AmountRub, payment.ReceivedOn.Format("02.01.2006"))
-		if !payment.Personal {
-			text = fmt.Sprintf("Групповая оплата\nСумма: %d ₽\nДата получения денег: %s\nГруппа: %s\nМесяц занятий: %s", payment.AmountRub, payment.ReceivedOn.Format("02.01.2006"), *payment.GroupName, payment.TrainingMonth.Format("01.2006"))
-		}
+		text = payment.details()
 		keyboard.InlineKeyboard[0][0].CallbackData = "ledger_page:" + strconv.FormatInt(history.page, 10)
 		button, callback := "🗑️ Удалить", "ledger_delete:"
 		if action == "ledger_delete" {
@@ -64,6 +69,9 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 			keyboard.InlineKeyboard[0][0].CallbackData = "ledger_view:" + strconv.FormatInt(id, 10)
 		}
 		keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: button, CallbackData: callback + strconv.FormatInt(id, 10)}}}, keyboard.InlineKeyboard...)
+		if action == "ledger_view" {
+			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: "✏️ Изменить", CallbackData: "ledger_edit:" + strconv.FormatInt(id, 10)}}}, keyboard.InlineKeyboard...)
+		}
 	case "ledger", "ledger_page":
 		if action == "ledger_page" {
 			next.page = id
@@ -106,5 +114,6 @@ func (h *telegramHandler) handleClientPayments(ctx context.Context, b *bot.Bot, 
 		log.Printf("Telegram payment history reply failed: %v", err)
 	} else {
 		h.paymentHistory = &next
+		h.paymentEdit = nil
 	}
 }

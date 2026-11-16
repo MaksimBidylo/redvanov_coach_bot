@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -38,5 +39,23 @@ func deleteClientPayment(ctx context.Context, pool *pgxpool.Pool, clientID, paym
 		table = "personal_payments"
 	}
 	_, err := pool.Exec(ctx, "DELETE FROM "+table+" WHERE id = $1 AND client_id = $2", paymentID, clientID)
+	return err
+}
+
+func updateClientPayment(ctx context.Context, pool *pgxpool.Pool, clientID, paymentID int64, personal bool, field string, value any) error {
+	column := map[string]string{"ledger_edit_amount": "amount_rub", "ledger_edit_received": "received_on", "ledger_edit_month": "training_month"}[field]
+	if column == "" || (personal && column == "training_month") {
+		return errors.New("invalid payment field")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	table := "group_payments"
+	if personal {
+		table = "personal_payments"
+	}
+	result, err := pool.Exec(ctx, "UPDATE "+table+" SET "+column+" = $3 WHERE id = $1 AND client_id = $2", paymentID, clientID, value)
+	if err == nil && result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return err
 }

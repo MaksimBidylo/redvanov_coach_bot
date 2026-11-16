@@ -24,6 +24,7 @@ type telegramHandler struct {
 	clientDraft         *clientDraft
 	paymentDraft        *paymentDraft
 	paymentHistory      *clientPaymentHistory
+	paymentEdit         *paymentEdit
 	renameGroupID       int64
 	editClientID        int64
 	editBirthDate       bool
@@ -64,13 +65,13 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm" || action == "ledger_edit") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
-		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client" && action != "ledger_page" && action != "ledger_view" && action != "ledger_delete" && action != "ledger_confirm") {
+		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client" && action != "ledger_page" && action != "ledger_view" && action != "ledger_delete" && action != "ledger_confirm" && action != "ledger_edit") {
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" && query.Data != "ledger_client" {
+	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" && query.Data != "ledger_client" && query.Data != "ledger_edit_amount" && query.Data != "ledger_edit_received" && query.Data != "ledger_edit_month" && query.Data != "ledger_edit_back" && query.Data != "ledger_edit_save" {
 		return
 	}
 	if (action == "delc" || action == "garc") && !hasTarget {
@@ -106,6 +107,10 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	h.paymentDraft = nil
+	if strings.HasPrefix(action, "ledger_edit") {
+		h.handlePaymentEdit(ctx, b, message.Chat.ID, id, action, "")
+		return
+	}
 	if strings.HasPrefix(action, "ledger") {
 		h.handleClientPayments(ctx, b, message.Chat.ID, action, id)
 		return
@@ -278,12 +283,17 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			h.paymentDraft = nil
+			h.paymentEdit = nil
 		}
 		return
 	}
 	if h.paymentDraft != nil {
 		replyExpected = h.paymentDraft.saved || (h.paymentDraft.step > 0 && h.paymentDraft.step < 4)
 		h.handlePayment(ctx, b, message.Chat.ID, 0, "input", message.Text)
+		return
+	} else if h.paymentEdit != nil {
+		replyExpected = h.paymentEdit.field != "" && h.paymentEdit.value == nil
+		h.handlePaymentEdit(ctx, b, message.Chat.ID, 0, "input", message.Text)
 		return
 	} else if h.renameGroupID != 0 {
 		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)
