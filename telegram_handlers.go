@@ -25,7 +25,7 @@ type telegramHandler struct {
 	paymentDraft        *paymentDraft
 	paymentHistory      *clientPaymentHistory
 	paymentEdit         *paymentEdit
-	groupSummary        *groupSummary
+	summary             *paymentSummary
 	renameGroupID       int64
 	editClientID        int64
 	editBirthDate       bool
@@ -66,7 +66,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm" || action == "ledger_edit" || action == "summary") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm" || action == "ledger_edit" || action == "summary" || action == "summary_personal") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client" && action != "ledger_page" && action != "ledger_view" && action != "ledger_delete" && action != "ledger_confirm" && action != "ledger_edit") {
 			return
@@ -90,7 +90,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	h.messageID = message.ID
 	h.renameGroupID = 0
 	h.editClientID = 0
-	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && !strings.HasPrefix(action, "payment") && !strings.HasPrefix(action, "ledger") && action != "archive" && action != "restore" && query.Data != "search_results" && (h.paymentDraft == nil || (!h.paymentDraft.pending && !h.paymentDraft.saved)) {
+	if action != "search_view" && action != "move" && !strings.HasPrefix(action, "edit_") && !strings.HasPrefix(action, "payment") && !strings.HasPrefix(action, "ledger") && !strings.HasPrefix(action, "summary") && action != "archive" && action != "restore" && query.Data != "search_results" && (h.paymentDraft == nil || (!h.paymentDraft.pending && !h.paymentDraft.saved)) {
 		h.search = nil
 	}
 	previousClientDraft := h.clientDraft
@@ -109,7 +109,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 	}
 	h.paymentDraft = nil
 	if strings.HasPrefix(action, "summary") {
-		h.handleGroupSummary(ctx, b, message.Chat.ID, id, action, "")
+		h.handleSummary(ctx, b, message.Chat.ID, id, action, "")
 		return
 	}
 	if strings.HasPrefix(action, "ledger_edit") {
@@ -300,8 +300,8 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		replyExpected = h.paymentEdit.field != "" && h.paymentEdit.value == nil
 		h.handlePaymentEdit(ctx, b, message.Chat.ID, 0, "input", message.Text)
 		return
-	} else if h.groupSummary != nil && h.groupSummary.waitingMonth {
-		h.handleGroupSummary(ctx, b, message.Chat.ID, 0, "input", message.Text)
+	} else if h.summary != nil && h.summary.waitingMonth {
+		h.handleSummary(ctx, b, message.Chat.ID, 0, "input", message.Text)
 		return
 	} else if h.renameGroupID != 0 {
 		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)

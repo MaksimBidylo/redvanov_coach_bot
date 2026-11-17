@@ -41,7 +41,7 @@ func (h *telegramHandler) reply(ctx context.Context, b *bot.Bot, chatID int64, t
 	if err != nil {
 		return 0, err
 	}
-	h.groupSummary = nil
+	h.summary, h.paymentEdit = nil, nil
 	h.messageID, h.revision = messageID, h.revision+1
 	return messageID, nil
 }
