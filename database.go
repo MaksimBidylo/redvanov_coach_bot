@@ -29,18 +29,27 @@ func openDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error
 }
 
 type group struct {
-	ID   int64
-	Name string
+	ID       int64
+	Name     string
+	Archived bool
 }
 
 func listGroups(ctx context.Context, pool *pgxpool.Pool, archived bool) ([]group, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	rows, err := pool.Query(ctx, "SELECT id, name FROM groups WHERE archived = $1 ORDER BY name", archived)
+	rows, err := pool.Query(ctx, "SELECT id, name, archived FROM groups WHERE archived = $1 ORDER BY name", archived)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[group])
+}
+
+func getGroup(ctx context.Context, pool *pgxpool.Pool, id int64) (group, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var g group
+	err := pool.QueryRow(ctx, "SELECT id, name, archived FROM groups WHERE id = $1", id).Scan(&g.ID, &g.Name, &g.Archived)
+	return g, err
 }
 
 func getGroupName(ctx context.Context, pool *pgxpool.Pool, id int64) (string, error) {
