@@ -20,7 +20,7 @@ type groupPaymentExportRow struct {
 	TrainingMonth time.Time
 }
 
-func groupPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, groupID int64, name string, month *time.Time) (data []byte, err error) {
+func groupPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, groupID int64, name string, month *time.Time) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	rows, err := pool.Query(ctx, `SELECT c.name, p.amount_rub, p.received_on, g.name, p.training_month
@@ -34,8 +34,6 @@ func groupPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, groupID int64, 
 	if err != nil {
 		return nil, err
 	}
-	file := excelize.NewFile()
-	defer func() { err = errors.Join(err, file.Close()) }()
 	period := "За всё время"
 	if month != nil {
 		period = month.Format("01.2006")
@@ -52,12 +50,18 @@ func groupPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, groupID int64, 
 		values = append(values, []any{payment.ClientName, excelAmount(amount), payment.ReceivedOn.Format("02.01.2006"), payment.GroupName, payment.TrainingMonth.Format("01.2006")})
 	}
 	values = append(values, []any{"Итого", excelAmount(&total)})
+	return paymentWorkbook(values, "E")
+}
+
+func paymentWorkbook(values [][]any, lastColumn string) (data []byte, err error) {
+	file := excelize.NewFile()
+	defer func() { err = errors.Join(err, file.Close()) }()
 	for i, row := range values {
 		if err := file.SetSheetRow("Sheet1", fmt.Sprintf("A%d", i+1), &row); err != nil {
 			return nil, err
 		}
 	}
-	if err := file.SetColWidth("Sheet1", "A", "E", 24); err != nil {
+	if err := file.SetColWidth("Sheet1", "A", lastColumn, 24); err != nil {
 		return nil, err
 	}
 	buffer, err := file.WriteToBuffer()
@@ -68,7 +72,6 @@ func groupPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, groupID int64, 
 }
 
 func excelAmount(value *big.Int) any {
-	// Excel rounds numeric cells beyond 15 decimal digits.
 	if len(value.String()) > 15 {
 		return value.String()
 	}

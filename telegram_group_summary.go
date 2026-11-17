@@ -34,17 +34,21 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 		next = *h.summary
 	}
 	if action == "summary_export" {
-		if next.personal || !next.exportReady {
+		if !next.exportReady {
 			return
 		}
-		data, err := groupPaymentsExcel(ctx, h.pool, next.id, next.name, next.month)
+		export, filename := groupPaymentsExcel, "group-payments.xlsx"
+		if next.personal {
+			export, filename = personalPaymentsExcel, "personal-payments.xlsx"
+		}
+		data, err := export(ctx, h.pool, next.id, next.name, next.month)
 		if err == nil {
 			_, err = b.SendDocument(ctx, &bot.SendDocumentParams{ChatID: chatID, Document: &models.InputFileUpload{
-				Filename: "group-payments.xlsx", Data: bytes.NewReader(data),
+				Filename: filename, Data: bytes.NewReader(data),
 			}})
 		}
 		if err != nil {
-			log.Printf("Export group payments failed: %v", err)
+			log.Printf("Export payments failed: %v", err)
 			next.exportReady = false
 			keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 				{{Text: "⬅️ Назад", CallbackData: "summary_back"}},
@@ -122,7 +126,7 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 			period = month.Format("01.2006")
 		}
 		text = fmt.Sprintf("%s\nПериод: %s\nИтого: %s ₽", title, period, total)
-		if err == nil && !next.personal {
+		if err == nil {
 			next.month, next.exportReady = month, true
 			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: "📥 Excel", CallbackData: "summary_export"}}}, keyboard.InlineKeyboard...)
 		}

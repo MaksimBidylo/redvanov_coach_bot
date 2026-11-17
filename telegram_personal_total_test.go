@@ -34,7 +34,7 @@ func TestTelegramPersonalTotal(t *testing.T) {
 		{"summary_month", "", prompt, "summary_back", ""},
 		{"summary_back", "", choose, "summary_month", ""},
 		{"summary_month", "", prompt, "summary_back", ""},
-		{"", "01.2027", title + "Период: 01.2027\nИтого: 7000 ₽", "summary_back", ""},
+		{"", "01.2027", title + "Период: 01.2027\nИтого: 7000 ₽", "summary_export", ""},
 		{"summary_back", "", choose, "summary_month", ""},
 		{"summary_month", "", prompt, "summary_back", ""},
 		{"", "03.2027", title + "Период: 03.2027\nИтого: 0 ₽", "summary_back", ""},
