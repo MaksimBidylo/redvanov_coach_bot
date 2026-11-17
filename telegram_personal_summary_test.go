@@ -28,7 +28,7 @@ func TestTelegramPersonalSummary(t *testing.T) {
 		{"summary_personal:1", "", title + "Выберите период.", "summary_month", ""},
 		{"summary_month", "", "Введите месяц получения денег (ММ.ГГГГ).", "summary_back", ""},
 		{"", "01.2027", "", "", ""},
-		{"", "01.2027", title + "Период: 01.2027\nИтого: 7000 ₽", "summary_back", ""},
+		{"", "01.2027", title + "Период: 01.2027\nИтого: 7000 ₽", "summary_export", ""},
 		{"old", "", "", "", ""},
 		{"summary_back", "", title + "Выберите период.", "summary_month", ""},
 		{"summary_month", "", "Введите месяц получения денег", "summary_back", ""},
