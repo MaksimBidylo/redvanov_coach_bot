@@ -112,7 +112,7 @@ func TestTelegramSendFailure(t *testing.T) {
 }
 
 func TestTelegramConfig(t *testing.T) {
-	for _, config := range [][2]string{{"", "token"}, {"0", "token"}, {"-1", "token"}, {"invalid", "token"}, {"7", ""}, {"7", "   "}} {
+	for _, config := range [][2]string{{"", "token"}, {"0", "token"}, {"-1", "token"}, {"invalid", "token"}, {"7,0", "token"}, {"7,invalid", "token"}, {"7,", "token"}, {"7", ""}, {"7", "   "}} {
 		if b, err := newTelegramBot(config[0], config[1], nil); err == nil || b != nil {
 			t.Fatal("invalid Telegram configuration accepted")
 		}
