@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -19,6 +20,8 @@ type paymentSummary struct {
 	name         string
 	personal     bool
 	waitingMonth bool
+	month        *time.Time
+	exportReady  bool
 }
 
 func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID, id int64, action, input string) {
@@ -30,6 +33,31 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 		}
 		next = *h.summary
 	}
+	if action == "summary_export" {
+		if next.personal || !next.exportReady {
+			return
+		}
+		data, err := groupPaymentsExcel(ctx, h.pool, next.id, next.name, next.month)
+		if err == nil {
+			_, err = b.SendDocument(ctx, &bot.SendDocumentParams{ChatID: chatID, Document: &models.InputFileUpload{
+				Filename: "group-payments.xlsx", Data: bytes.NewReader(data),
+			}})
+		}
+		if err != nil {
+			log.Printf("Export group payments failed: %v", err)
+			next.exportReady = false
+			keyboard := models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+				{{Text: "⬅️ Назад", CallbackData: "summary_back"}},
+			}}
+			if _, err := h.reply(ctx, b, chatID, "Не удалось выгрузить сводку. Попробуйте ещё раз.", keyboard); err != nil {
+				log.Printf("Telegram export reply failed: %v", err)
+			} else {
+				h.summary = &next
+			}
+		}
+		return
+	}
+	next.exportReady = false
 	var err error
 	if entry && id > 0 {
 		if next.personal {
@@ -94,6 +122,10 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 			period = month.Format("01.2006")
 		}
 		text = fmt.Sprintf("%s\nПериод: %s\nИтого: %s ₽", title, period, total)
+		if err == nil && !next.personal {
+			next.month, next.exportReady = month, true
+			keyboard.InlineKeyboard = append([][]models.InlineKeyboardButton{{{Text: "📥 Excel", CallbackData: "summary_export"}}}, keyboard.InlineKeyboard...)
+		}
 	}
 	if err != nil {
 		log.Printf("Load payment summary failed: %v", err)
