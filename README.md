@@ -9,6 +9,7 @@ cp .env.example .env
 ```
 
 Заполни `TELEGRAM_OWNER_ID` и `TELEGRAM_BOT_TOKEN` в `.env`.
+Для доступа двух пользователей укажи их Telegram ID в `TELEGRAM_OWNER_ID` через запятую.
 `DATABASE_URL` задаёт подключение бота к PostgreSQL.
 Миграции схемы применяются автоматически при старте бота.
 
