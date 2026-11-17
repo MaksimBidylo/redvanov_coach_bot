@@ -35,7 +35,7 @@ func personalPaymentTotal(ctx context.Context, pool *pgxpool.Pool, clientID int6
 	defer cancel()
 	var total string
 	err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_rub), 0)::text FROM personal_payments
-		WHERE client_id = $1 AND ($2::date IS NULL OR
+		WHERE ($1::bigint = 0 OR client_id = $1) AND ($2::date IS NULL OR
 		(received_on >= $2::date AND received_on < $2::date + INTERVAL '1 month'))`, clientID, month).Scan(&total)
 	return total, err
 }

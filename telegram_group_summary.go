@@ -31,7 +31,7 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 		next = *h.summary
 	}
 	var err error
-	if entry {
+	if entry && id > 0 {
 		if next.personal {
 			var c client
 			c, err = getClient(ctx, h.pool, id)
@@ -58,9 +58,13 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 	title := "Сводка по группе «" + next.name + "»"
 	prompt, back := groupSummaryMonthPrompt, "group:"+strconv.FormatInt(next.id, 10)
 	if next.personal {
-		title, prompt, back = "Персональные оплаты клиента «"+next.name+"»", "Введите месяц получения денег (ММ.ГГГГ).", "client_view:"+strconv.FormatInt(next.id, 10)
-		if h.search != nil && h.search.messageID != 0 {
-			back = "search_view:" + strconv.FormatInt(next.id, 10)
+		title, prompt, back = "Персональные оплаты", "Введите месяц получения денег (ММ.ГГГГ).", "menu"
+		if next.id > 0 {
+			title += " клиента «" + next.name + "»"
+			back = "client_view:" + strconv.FormatInt(next.id, 10)
+			if h.search != nil && h.search.messageID != 0 {
+				back = "search_view:" + strconv.FormatInt(next.id, 10)
+			}
 		}
 	}
 	if !strings.HasPrefix(back, "search_") {
