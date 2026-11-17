@@ -32,6 +32,7 @@ func newTelegramBot(owners, token string, pool *pgxpool.Pool, options ...bot.Opt
 				{{Text: "👤 Клиенты без группы", CallbackData: "ungrouped"}},
 				{{Text: "📊 Персональные оплаты", CallbackData: "summary_personal"}},
 				{{Text: "🔍 Найти клиента", CallbackData: "search"}},
+				{{Text: "📥 Общая выгрузка", CallbackData: "export_all"}},
 			}},
 		}
 	}

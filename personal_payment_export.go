@@ -16,6 +16,14 @@ type personalPaymentExportRow struct {
 }
 
 func personalPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, clientID int64, name string, month *time.Time) ([]byte, error) {
+	values, err := personalPaymentRows(ctx, pool, clientID, name, month)
+	if err != nil {
+		return nil, err
+	}
+	return paymentWorkbook(paymentSheet{"Sheet1", "C", values})
+}
+
+func personalPaymentRows(ctx context.Context, pool *pgxpool.Pool, clientID int64, name string, month *time.Time) ([][]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	rows, err := pool.Query(ctx, `SELECT c.name, p.amount_rub, p.received_on
@@ -49,5 +57,5 @@ func personalPaymentsExcel(ctx context.Context, pool *pgxpool.Pool, clientID int
 		values = append(values, []any{payment.ClientName, excelAmount(amount), payment.ReceivedOn.Format("02.01.2006")})
 	}
 	values = append(values, []any{"Итого", excelAmount(&total)})
-	return paymentWorkbook(values, "C")
+	return values, nil
 }
