@@ -147,7 +147,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		h.handleClientEdit(ctx, b, message.Chat.ID, id, action, "")
 		return
 	}
-	text, keyboard := "Добро пожаловать!", h.menu
+	text, keyboard := "Главное меню", h.menu
 	if action == "archive" || action == "restore" {
 		text, keyboard = h.changeClientArchive(ctx, id, action == "archive")
 	} else if action == "del" || action == "delc" || action == "gar" || action == "garc" {
@@ -284,7 +284,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.search = nil
 		h.renameGroupID = 0
 		h.editClientID = 0
-		if _, err := h.reply(ctx, b, message.Chat.ID, "Добро пожаловать!", h.menu); err != nil {
+		if _, err := h.reply(ctx, b, message.Chat.ID, "Главное меню", h.menu); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			h.paymentDraft = nil

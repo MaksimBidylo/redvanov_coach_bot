@@ -25,7 +25,7 @@ func TestTelegramPersonalTotal(t *testing.T) {
 	const choose = title + "Выберите период."
 	const prompt = "Введите месяц получения денег (ММ.ГГГГ)."
 	for _, tc := range []struct{ data, input, want, button, sql string }{
-		{"", "/start", "Добро пожаловать!", "summary_personal", ""},
+		{"", "/start", "Главное меню", "summary_personal", ""},
 		{"summary_personal", "", choose, "summary_all", ""},
 		{"summary_all", "", title + "Период: За всё время\nИтого: 0 ₽", "summary_back", ""},
 		{"summary_back", "", choose, "summary_all", ""},
@@ -39,7 +39,7 @@ func TestTelegramPersonalTotal(t *testing.T) {
 		{"summary_month", "", prompt, "summary_back", ""},
 		{"", "03.2027", title + "Период: 03.2027\nИтого: 0 ₽", "summary_back", ""},
 		{"summary_back", "", choose, "menu", ""},
-		{"menu", "", "Добро пожаловать!", "summary_personal", ""},
+		{"menu", "", "Главное меню", "summary_personal", ""},
 		{"", "01.2027", "", "", ""},
 	} {
 		if tc.sql != "" {

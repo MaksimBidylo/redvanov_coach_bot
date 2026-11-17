@@ -32,7 +32,7 @@ func TestTelegramClientSearch(t *testing.T) {
 		{"", "search_results", "Результаты поиска:", "", `"callback_data":"search_view:2|`, false, 2},
 		{"", "search_view:2", "иванов Пётр\nДата рождения: не указана\nГруппа: без группы", "", `"callback_data":"search_results|`, false, 0},
 		{"", "search_results", "Результаты поиска:", "", "иванов Пётр — без группы", false, 2},
-		{"", "menu", "Добро пожаловать!", "", `"callback_data":"search"`, false, 0},
+		{"", "menu", "Главное меню", "", `"callback_data":"search"`, false, 0},
 		{"ИВАН", "", "", "", "", false, 0},
 		{"", "search", clientSearchPrompt, "", "", false, 0},
 		{"", "search_view:1", "", "", "", true, 0},
@@ -48,7 +48,7 @@ func TestTelegramClientSearch(t *testing.T) {
 		{"ИВАН", "", "Не удалось найти клиентов. Попробуйте ещё раз.\n" + clientSearchPrompt, "ALTER TABLE clients RENAME COLUMN name TO broken", "", false, 0},
 		{"ИВАН", "", "Результаты поиска:", "ALTER TABLE clients RENAME COLUMN broken TO name", "иванов Пётр — без группы", false, 2},
 		{"", "search", clientSearchPrompt, "", "", false, 0},
-		{"/start", "", "Добро пожаловать!", "", "", false, 0},
+		{"/start", "", "Главное меню", "", "", false, 0},
 		{"ИВАН", "", "", "", "", false, 0},
 		{"", "search_results", "", "", "", true, 0},
 	} {
