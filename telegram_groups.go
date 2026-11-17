@@ -15,9 +15,16 @@ import (
 
 const groupRenamePrompt = "Введите новое название группы."
 
-func (h *telegramHandler) groupCard(ctx context.Context, id int64, name string) (string, models.InlineKeyboardMarkup) {
-	body, buttons := h.groupClientsMenu(ctx, &id)
+func (h *telegramHandler) groupCard(ctx context.Context, id int64, name string, archived bool) (string, models.InlineKeyboardMarkup) {
 	key := strconv.FormatInt(id, 10)
+	if archived {
+		return name + " (арх)", models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{{Text: "📊 Сводка", CallbackData: "summary:" + key}},
+			{{Text: "♻️ Восстановить", CallbackData: "group_restore:" + key}},
+			{{Text: "⬅️ Назад", CallbackData: "archived_groups"}},
+		}}
+	}
+	body, buttons := h.groupClientsMenu(ctx, &id)
 	buttons = append(buttons,
 		[]models.InlineKeyboardButton{{Text: "📊 Сводка", CallbackData: "summary:" + key}},
 		[]models.InlineKeyboardButton{{Text: "✏️ Изменить название", CallbackData: "rename:" + key}},
@@ -51,7 +58,7 @@ func (h *telegramHandler) handleGroupRename(ctx context.Context, b *bot.Bot, cha
 			text = "Не удалось изменить название группы. Попробуйте ещё раз.\n" + groupRenamePrompt
 		default:
 			h.renameGroupID = 0
-			text, keyboard = h.groupCard(ctx, id, name)
+			text, keyboard = h.groupCard(ctx, id, name, false)
 		}
 	}
 	if _, err := h.reply(ctx, b, chatID, text, keyboard); err != nil {

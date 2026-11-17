@@ -188,12 +188,8 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 			buttons := make([][]models.InlineKeyboardButton, 0, len(groups)+len(keyboard.InlineKeyboard))
 			for _, group := range groups {
-				label, action := group.Name, "group:"
-				if archived {
-					label, action = "♻️ Восстановить «"+group.Name+"»", "group_restore:"
-				}
 				buttons = append(buttons, []models.InlineKeyboardButton{{
-					Text: label, CallbackData: action + strconv.FormatInt(group.ID, 10),
+					Text: group.Name, CallbackData: "group:" + strconv.FormatInt(group.ID, 10),
 				}})
 			}
 			keyboard.InlineKeyboard = append(buttons, keyboard.InlineKeyboard...)
@@ -203,8 +199,13 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			{{Text: "⬅️ Назад", CallbackData: "groups"}},
 		}}
 		var name string
+		var archived bool
 		var err error
-		if action == "group_restore" {
+		if action == "group" {
+			var g group
+			g, err = getGroup(ctx, h.pool, id)
+			name, archived = g.Name, g.Archived
+		} else if action == "group_restore" {
 			name, err = restoreGroup(ctx, h.pool, id)
 			keyboard.InlineKeyboard[0][0].CallbackData = "archived_groups"
 		} else if id > 0 {
@@ -243,7 +244,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 				}
 				return
 			}
-			text, keyboard = h.groupCard(ctx, id, name)
+			text, keyboard = h.groupCard(ctx, id, name, archived)
 		}
 	}
 	if h.search != nil && (action == "search_view" || action == "archive" || action == "restore" || (action == "move" && hasTarget)) {

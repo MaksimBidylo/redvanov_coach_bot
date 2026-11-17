@@ -37,7 +37,9 @@ func (h *telegramHandler) handleSummary(ctx context.Context, b *bot.Bot, chatID,
 			c, err = getClient(ctx, h.pool, id)
 			next.name = c.Name
 		} else {
-			next.name, err = getGroupName(ctx, h.pool, id)
+			var g group
+			g, err = getGroup(ctx, h.pool, id)
+			next.name = g.Name
 		}
 	}
 	wasWaiting := next.waitingMonth
