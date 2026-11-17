@@ -25,6 +25,7 @@ type telegramHandler struct {
 	paymentDraft        *paymentDraft
 	paymentHistory      *clientPaymentHistory
 	paymentEdit         *paymentEdit
+	groupSummary        *groupSummary
 	renameGroupID       int64
 	editClientID        int64
 	editBirthDate       bool
@@ -47,7 +48,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	data, revision, versioned := strings.Cut(query.Data, "|")
-	if (versioned || data == "client_skip" || data == "client_back" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del") || strings.HasPrefix(data, "archive:") || strings.HasPrefix(data, "restore:") || strings.HasPrefix(data, "gar") || strings.HasPrefix(data, "group_restore:") || strings.HasPrefix(data, "payment") || strings.HasPrefix(data, "ledger")) && revision != strconv.FormatInt(h.revision, 10) {
+	if (versioned || data == "client_skip" || data == "client_back" || strings.HasPrefix(data, "search_") || strings.HasPrefix(data, "move:") || strings.HasPrefix(data, "rename:") || strings.HasPrefix(data, "edit_") || strings.HasPrefix(data, "del") || strings.HasPrefix(data, "archive:") || strings.HasPrefix(data, "restore:") || strings.HasPrefix(data, "gar") || strings.HasPrefix(data, "group_restore:") || strings.HasPrefix(data, "payment") || strings.HasPrefix(data, "ledger") || strings.HasPrefix(data, "summary")) && revision != strconv.FormatInt(h.revision, 10) {
 		return
 	}
 	query.Data = data
@@ -65,13 +66,13 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			}
 		}
 	}
-	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm" || action == "ledger_edit") {
+	if hasID && (action == "group" || action == "client" || action == "client_view" || action == "search_view" || action == "move" || action == "rename" || action == "edit_name" || action == "edit_birth" || action == "edit_date" || action == "edit_clear" || action == "del" || action == "delc" || action == "archive" || action == "restore" || action == "gar" || action == "garc" || action == "group_restore" || action == "payment" || action == "ledger" || action == "ledger_page" || action == "ledger_view" || action == "ledger_delete" || action == "ledger_confirm" || action == "ledger_edit" || action == "summary") {
 		parsedID, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || parsedID < 0 || (parsedID == 0 && action != "client" && action != "ledger_page" && action != "ledger_view" && action != "ledger_delete" && action != "ledger_confirm" && action != "ledger_edit") {
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" && query.Data != "ledger_client" && query.Data != "ledger_edit_amount" && query.Data != "ledger_edit_received" && query.Data != "ledger_edit_month" && query.Data != "ledger_edit_back" && query.Data != "ledger_edit_save" {
+	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" && query.Data != "ledger_client" && query.Data != "ledger_edit_amount" && query.Data != "ledger_edit_received" && query.Data != "ledger_edit_month" && query.Data != "ledger_edit_back" && query.Data != "ledger_edit_save" && query.Data != "summary_month" && query.Data != "summary_all" && query.Data != "summary_back" {
 		return
 	}
 	if (action == "delc" || action == "garc") && !hasTarget {
@@ -107,6 +108,10 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		return
 	}
 	h.paymentDraft = nil
+	if strings.HasPrefix(action, "summary") {
+		h.handleGroupSummary(ctx, b, message.Chat.ID, id, action, "")
+		return
+	}
 	if strings.HasPrefix(action, "ledger_edit") {
 		h.handlePaymentEdit(ctx, b, message.Chat.ID, id, action, "")
 		return
@@ -294,6 +299,9 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 	} else if h.paymentEdit != nil {
 		replyExpected = h.paymentEdit.field != "" && h.paymentEdit.value == nil
 		h.handlePaymentEdit(ctx, b, message.Chat.ID, 0, "input", message.Text)
+		return
+	} else if h.groupSummary != nil && h.groupSummary.waitingMonth {
+		h.handleGroupSummary(ctx, b, message.Chat.ID, 0, "input", message.Text)
 		return
 	} else if h.renameGroupID != 0 {
 		h.handleGroupRename(ctx, b, message.Chat.ID, message.Text)

@@ -19,6 +19,7 @@ func (h *telegramHandler) groupCard(ctx context.Context, id int64, name string) 
 	body, buttons := h.groupClientsMenu(ctx, &id)
 	key := strconv.FormatInt(id, 10)
 	buttons = append(buttons,
+		[]models.InlineKeyboardButton{{Text: "📊 Сводка", CallbackData: "summary:" + key}},
 		[]models.InlineKeyboardButton{{Text: "✏️ Изменить название", CallbackData: "rename:" + key}},
 		[]models.InlineKeyboardButton{{Text: "➕ Добавить клиента", CallbackData: "client:" + key}},
 		[]models.InlineKeyboardButton{{Text: "📦 В архив", CallbackData: "gar:" + key}},
