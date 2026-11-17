@@ -32,3 +32,12 @@ func createGroupPayment(ctx context.Context, pool *pgxpool.Pool, payment groupPa
 	}
 	return err
 }
+
+func groupPaymentTotal(ctx context.Context, pool *pgxpool.Pool, groupID int64, month *time.Time) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var total string
+	err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_rub), 0)::text FROM group_payments
+		WHERE group_id = $1 AND ($2::date IS NULL OR training_month = $2::date)`, groupID, month).Scan(&total)
+	return total, err
+}
