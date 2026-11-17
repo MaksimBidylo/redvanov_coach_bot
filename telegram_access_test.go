@@ -57,7 +57,7 @@ func TestTelegramSharedAccess(t *testing.T) {
 		owner             int64
 		input, data, want string
 	}{
-		{7, "/start", "", "Добро пожаловать!"}, {8, "/start", "", "Добро пожаловать!"},
+		{7, "/start", "", "Главное меню"}, {8, "/start", "", "Главное меню"},
 		{7, "", "groups", "Групп пока нет"}, {8, "", "groups", "Групп пока нет"},
 		{7, "", "group_create", groupNamePrompt}, {8, "", "group_create", groupNamePrompt},
 		{7, "Утро", "", "Группа создана."}, {8, "Вечер", "", "Группа создана."},

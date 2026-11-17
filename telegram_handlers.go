@@ -72,7 +72,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 			return
 		}
 		id = parsedID
-	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" && query.Data != "ledger_client" && query.Data != "ledger_edit_amount" && query.Data != "ledger_edit_received" && query.Data != "ledger_edit_month" && query.Data != "ledger_edit_back" && query.Data != "ledger_edit_save" && query.Data != "summary_month" && query.Data != "summary_all" && query.Data != "summary_back" {
+	} else if query.Data != "groups" && query.Data != "archived_groups" && query.Data != "menu" && query.Data != "group_create" && query.Data != "client_skip" && query.Data != "client_back" && query.Data != "ungrouped" && query.Data != "search" && query.Data != "search_results" && query.Data != "payment_back" && query.Data != "payment_current" && query.Data != "payment_save" && query.Data != "payment_group" && query.Data != "payment_personal" && query.Data != "ledger_client" && query.Data != "ledger_edit_amount" && query.Data != "ledger_edit_received" && query.Data != "ledger_edit_month" && query.Data != "ledger_edit_back" && query.Data != "ledger_edit_save" && query.Data != "summary_personal" && query.Data != "summary_month" && query.Data != "summary_all" && query.Data != "summary_back" {
 		return
 	}
 	if (action == "delc" || action == "garc") && !hasTarget {
@@ -147,7 +147,7 @@ func (h *telegramHandler) handleCallback(ctx context.Context, b *bot.Bot, query 
 		h.handleClientEdit(ctx, b, message.Chat.ID, id, action, "")
 		return
 	}
-	text, keyboard := "Добро пожаловать!", h.menu
+	text, keyboard := "Главное меню", h.menu
 	if action == "archive" || action == "restore" {
 		text, keyboard = h.changeClientArchive(ctx, id, action == "archive")
 	} else if action == "del" || action == "delc" || action == "gar" || action == "garc" {
@@ -284,7 +284,7 @@ func (h *telegramHandler) handleMessage(ctx context.Context, b *bot.Bot, message
 		h.search = nil
 		h.renameGroupID = 0
 		h.editClientID = 0
-		if _, err := h.reply(ctx, b, message.Chat.ID, "Добро пожаловать!", h.menu); err != nil {
+		if _, err := h.reply(ctx, b, message.Chat.ID, "Главное меню", h.menu); err != nil {
 			log.Printf("Telegram sendMessage failed: %v", err)
 		} else {
 			h.paymentDraft = nil

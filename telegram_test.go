@@ -41,7 +41,7 @@ func TestTelegramHandler(t *testing.T) {
 		if r.URL.Path != "/bottest-token/"+method {
 			t.Errorf("unexpected request: %s", r.URL.Path)
 		}
-		if r.FormValue("chat_id") != "7" || r.FormValue("text") != "Добро пожаловать!" {
+		if r.FormValue("chat_id") != "7" || r.FormValue("text") != "Главное меню" {
 			t.Errorf("unexpected message: %v", r.Form)
 		}
 		if method == "editMessageText" && r.FormValue("message_id") != "1" {
@@ -299,13 +299,13 @@ func TestTelegramGroupCreation(t *testing.T) {
 		{"duplicate", "ВЗРОСЛАЯ УТРО", "", 7, "Группа с таким названием уже есть.\n" + groupNamePrompt, ""},
 		{"retry", "Детская", "", 7, "Группа создана.", ""},
 		{"begin cancel", "", "group_create", 7, groupNamePrompt, ""},
-		{"cancel", "/start", "", 7, "Добро пожаловать!", ""},
+		{"cancel", "/start", "", 7, "Главное меню", ""},
 		{"after cancel", "Лишняя", "", 7, "", ""},
 		{"begin back", "", "group_create", 7, groupNamePrompt, ""},
 		{"back", "", "groups", 7, "Группы:", ""},
 		{"after back", "Лишняя", "", 7, "", ""},
 		{"begin menu", "", "group_create", 7, groupNamePrompt, ""},
-		{"menu", "", "menu", 7, "Добро пожаловать!", ""},
+		{"menu", "", "menu", 7, "Главное меню", ""},
 		{"after menu", "Лишняя", "", 7, "", ""},
 		{"begin error", "", "group_create", 7, groupNamePrompt, ""},
 		{"database error", "Выходные", "", 7, "Не удалось создать группу. Попробуйте ещё раз.\n" + groupNamePrompt, "ALTER TABLE groups RENAME COLUMN name TO broken"},

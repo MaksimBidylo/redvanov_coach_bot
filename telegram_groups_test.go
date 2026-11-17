@@ -30,7 +30,7 @@ func TestTelegramGroupRename(t *testing.T) {
 		{"group:1", "", "дети\n\n", "rename:1", "", ""},
 		{"", "Не сохранять", "", "", "", ""},
 		{"rename:1", "", groupRenamePrompt, "group:1", "", ""},
-		{"", "/start", "Добро пожаловать!", "groups", "", ""},
+		{"", "/start", "Главное меню", "groups", "", ""},
 		{"old", "", "", "", "", ""},
 		{"", "Не сохранять", "", "", "", ""},
 		{"group:1", "", "дети\n\n", "rename:1", "", ""},
